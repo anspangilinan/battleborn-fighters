@@ -1,0 +1,10 @@
+{
+  "name": "@battleborn/game-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p tsconfig.json",
+    "test": "tsx --test src/engine.test.ts"
+  }
+}

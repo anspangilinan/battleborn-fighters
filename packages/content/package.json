@@ -1,0 +1,13 @@
+{
+  "name": "@battleborn/content",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@battleborn/game-core": "0.0.0",
+    "zod": "^4.1.11"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json"
+  }
+}

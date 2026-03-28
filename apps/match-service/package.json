@@ -1,0 +1,20 @@
+{
+  "name": "@battleborn/match-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@battleborn/content": "0.0.0",
+    "@battleborn/game-core": "0.0.0",
+    "jose": "^6.1.0",
+    "ws": "^8.18.3"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}
