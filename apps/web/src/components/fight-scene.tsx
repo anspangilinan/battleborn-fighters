@@ -414,6 +414,26 @@ function colorToNumber(hex: string) {
   return Number.parseInt(hex.replace('#', ''), 16);
 }
 
+function getCountdownAnnouncement(state: MatchState) {
+  if (state.status !== 'countdown') {
+    return null;
+  }
+
+  if (state.countdownFrames > FPS) {
+    return {
+      eyebrow: 'Next Bout',
+      title: `Round ${state.round}`,
+      phase: 'round' as const,
+    };
+  }
+
+  return {
+    eyebrow: 'Placeholder',
+    title: 'Fight!',
+    phase: 'fight' as const,
+  };
+}
+
 export function FightScene(props: FightSceneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const keyboardInputRef = useRef<InputState>(cloneInput());
@@ -957,6 +977,9 @@ export function FightScene(props: FightSceneProps) {
     }),
     [fighterAssetManifests, fighterDefinition.id, opponentDefinition.id],
   );
+  const countdownAnnouncement = hudState
+    ? getCountdownAnnouncement(hudState)
+    : null;
 
   return (
     <div
@@ -992,6 +1015,21 @@ export function FightScene(props: FightSceneProps) {
           state={hudState}
           headshots={hudHeadshots}
         />
+      ) : null}
+      {!isSceneBooting && countdownAnnouncement ? (
+        <div
+          className={`fight-countdown-overlay fight-countdown-phase-${countdownAnnouncement.phase}`}
+          aria-live="polite"
+        >
+          <div className="fight-countdown-panel">
+            <div className="fight-countdown-eyebrow">
+              {countdownAnnouncement.eyebrow}
+            </div>
+            <div className="fight-countdown-title">
+              {countdownAnnouncement.title}
+            </div>
+          </div>
+        </div>
       ) : null}
       {!isSceneBooting && isPaused ? (
         <div className="fight-pause-overlay">
