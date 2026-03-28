@@ -1503,6 +1503,17 @@ span {
     width: min(100%, 360px);
   }
 
+  .landing-menu-nav {
+    width: min(100%, 34cqw);
+    gap: clamp(6px, 1.4cqh, 12px);
+  }
+
+  .landing-menu-link {
+    min-height: clamp(40px, 14cqh, 60px);
+    border-width: 3px;
+    font-size: clamp(1.1rem, 4cqw, 3rem);
+  }
+
   .hero,
   .section-grid,
   .fight-layout,
@@ -1603,6 +1614,21 @@ span {
 }
 
 @container app-frame (max-height: 460px) {
+  .landing-menu-screen {
+    padding: clamp(8px, 1.8cqh, 16px);
+  }
+
+  .landing-menu-nav {
+    width: min(100%, 34cqw);
+    gap: clamp(6px, 1.4cqh, 12px);
+  }
+
+  .landing-menu-link {
+    min-height: clamp(40px, 14cqh, 60px);
+    border-width: 3px;
+    font-size: clamp(1.1rem, 4cqw, 3rem);
+  }
+
   .fight-pause-action {
     min-width: 0;
     min-height: 72px;
