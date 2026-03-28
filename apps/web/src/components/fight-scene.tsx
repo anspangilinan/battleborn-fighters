@@ -428,7 +428,7 @@ function getCountdownAnnouncement(state: MatchState) {
   }
 
   return {
-    eyebrow: 'Placeholder',
+    eyebrow: '',
     title: 'Fight!',
     phase: 'fight' as const,
   };
@@ -1022,9 +1022,11 @@ export function FightScene(props: FightSceneProps) {
           aria-live="polite"
         >
           <div className="fight-countdown-panel">
-            <div className="fight-countdown-eyebrow">
-              {countdownAnnouncement.eyebrow}
-            </div>
+            {countdownAnnouncement.eyebrow ? (
+              <div className="fight-countdown-eyebrow">
+                {countdownAnnouncement.eyebrow}
+              </div>
+            ) : null}
             <div className="fight-countdown-title">
               {countdownAnnouncement.title}
             </div>

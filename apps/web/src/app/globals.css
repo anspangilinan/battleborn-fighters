@@ -102,13 +102,15 @@ span {
 }
 
 .landing-title-screen,
-.landing-menu-screen {
+.landing-menu-screen,
+.landing-password-screen {
   display: grid;
   place-items: center;
 }
 
 .landing-title-screen::before,
-.landing-menu-screen::before {
+.landing-menu-screen::before,
+.landing-password-screen::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -172,11 +174,6 @@ span {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   animation: landing-prompt-flash 900ms steps(2, end) infinite;
-}
-
-.landing-title-screen-password-open .landing-title-content {
-  filter: blur(6px);
-  opacity: 0.18;
 }
 
 .landing-password-overlay {
