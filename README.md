@@ -58,7 +58,9 @@ SESSION_TOKEN_SECRET=change-me NEXT_PUBLIC_MATCH_SERVICE_URL=ws://localhost:8787
 
 ### Vercel
 
-- Deploy `apps/web`
+- Import the repository root and keep the checked-in [vercel.json](/home/dev/Projects/battleborn/battleborn-fighters/vercel.json).
+- Framework Preset: `Next.js`
+- Output Directory: leave it unset. Do not override it to `public`.
 - Set:
   - `SESSION_TOKEN_SECRET`
   - `NEXT_PUBLIC_MATCH_SERVICE_URL`
