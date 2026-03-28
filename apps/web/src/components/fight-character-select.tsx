@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
 
@@ -184,6 +185,7 @@ export function FightCharacterSelect({
   initialFighterId,
   initialOpponentId,
 }: FightCharacterSelectProps) {
+  const router = useRouter();
   const [selectedFighterId, setSelectedFighterId] = useState(() =>
     initialFighterId && fighterRoster[initialFighterId] ? initialFighterId : fighters[0]?.id ?? "",
   );
@@ -224,6 +226,23 @@ export function FightCharacterSelect({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.repeat) {
+        return;
+      }
+
+      event.preventDefault();
+      router.push("/");
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [router]);
 
   if (!selectedFighter || !selectedOpponent) {
     return null;

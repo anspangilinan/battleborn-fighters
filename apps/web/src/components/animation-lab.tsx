@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
 
@@ -95,6 +96,7 @@ function getCurrentFrameSource(frameSources: string[], currentFrame: number) {
 }
 
 export function AnimationLab() {
+  const router = useRouter();
   const [selectedFighterIds, setSelectedFighterIds] = useState<string[]>(defaultSelectedFighterIds);
   const [stance, setStance] = useState<StanceId>("walk");
   const [frameSourcesByFighter, setFrameSourcesByFighter] = useState<FighterFrameState>({});
@@ -163,6 +165,23 @@ export function AnimationLab() {
       window.clearTimeout(timer);
     };
   }, [currentFrame, isLoading, maxFrameCount]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.repeat) {
+        return;
+      }
+
+      event.preventDefault();
+      router.push("/");
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [router]);
 
   const toggleFighter = (fighterId: string) => {
     setSelectedFighterIds((previous) => {
