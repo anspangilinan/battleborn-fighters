@@ -291,7 +291,6 @@ export function HomeScreen() {
             aria-modal="true"
             aria-labelledby="landing-password-label"
           >
-            <p className="landing-password-kicker">Password Required</p>
             <label id="landing-password-label" className="landing-password-label" htmlFor="landing-password-input">
               It is...
             </label>
@@ -311,11 +310,6 @@ export function HomeScreen() {
               spellCheck={false}
               aria-describedby={passwordError ? "landing-password-error" : undefined}
             />
-            <div className="landing-password-actions">
-              <button type="submit" className="landing-password-submit">
-                Enter
-              </button>
-            </div>
             <p className={`landing-password-error${passwordError ? " landing-password-error-visible" : ""}`} id="landing-password-error">
               {passwordError || " "}
             </p>

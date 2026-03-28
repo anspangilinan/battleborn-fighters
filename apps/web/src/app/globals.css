@@ -192,23 +192,8 @@ span {
   display: grid;
   gap: clamp(10px, 1.8cqh, 18px);
   width: min(100%, 440px);
-  padding: clamp(18px, 3cqw, 30px);
-  border: 4px solid rgba(246, 243, 232, 0.72);
-  background:
-    linear-gradient(180deg, rgba(14, 24, 40, 0.96), rgba(4, 7, 15, 0.96)),
-    linear-gradient(135deg, rgba(50, 213, 255, 0.1), rgba(255, 180, 74, 0.08));
-  box-shadow:
-    0 0 0 4px rgba(11, 11, 24, 0.9) inset,
-    0 24px 44px rgba(0, 0, 0, 0.38);
-}
-
-.landing-password-kicker {
-  margin: 0;
-  color: #33d9ff;
-  font-family: "Courier New", monospace;
-  font-size: clamp(0.9rem, 1.8cqw, 1.15rem);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  justify-items: center;
+  padding: clamp(8px, 1.2cqw, 16px);
 }
 
 .landing-password-label {
@@ -243,32 +228,6 @@ span {
   border-color: #33d9ff;
 }
 
-.landing-password-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.landing-password-submit {
-  min-width: 148px;
-  min-height: clamp(54px, 11cqh, 66px);
-  padding: 0 22px;
-  border: 3px solid rgba(246, 243, 232, 0.72);
-  background: linear-gradient(180deg, rgba(255, 240, 127, 0.96), rgba(255, 180, 74, 0.94));
-  color: #07101a;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
-  font-size: clamp(1.3rem, 2.8cqw, 1.9rem);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  box-shadow:
-    0 0 0 3px rgba(11, 11, 24, 0.9) inset,
-    0 14px 28px rgba(0, 0, 0, 0.28);
-  cursor: pointer;
-}
-
-.landing-password-submit:hover {
-  color: #0d2436;
-}
-
 .landing-password-error {
   min-height: 1.2em;
   margin: 0;
@@ -276,6 +235,7 @@ span {
   font-family: "Courier New", monospace;
   font-size: clamp(0.95rem, 1.9cqw, 1.1rem);
   letter-spacing: 0.04em;
+  text-align: center;
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -1541,14 +1501,6 @@ span {
 @container app-frame (max-width: 720px) {
   .landing-password-panel {
     width: min(100%, 360px);
-  }
-
-  .landing-password-actions {
-    justify-content: stretch;
-  }
-
-  .landing-password-submit {
-    width: 100%;
   }
 
   .hero,
