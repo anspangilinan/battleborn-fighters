@@ -7,6 +7,7 @@ type ArcadeMenuItemProps = {
   children: ReactNode;
   className?: string;
   cta?: boolean;
+  disabled?: boolean;
   href?: string;
   onClick?: MouseEventHandler<HTMLButtonElement>;
   style?: CSSProperties;
@@ -17,14 +18,22 @@ export function ArcadeMenuItem({
   children,
   className,
   cta = false,
+  disabled = false,
   href,
   onClick,
   style,
   type = "button",
 }: ArcadeMenuItemProps) {
-  const classes = ["arcade-menu-item", cta ? "arcade-menu-item-cta" : "", className ?? ""].filter(Boolean).join(" ");
+  const classes = [
+    "arcade-menu-item",
+    cta ? "arcade-menu-item-cta" : "",
+    disabled ? "arcade-menu-item-disabled" : "",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  if (href) {
+  if (href && !disabled) {
     return (
       <Link href={href} className={classes} style={style}>
         {children}
@@ -33,7 +42,7 @@ export function ArcadeMenuItem({
   }
 
   return (
-    <button type={type} className={classes} style={style} onClick={onClick}>
+    <button type={type} className={classes} style={style} onClick={onClick} disabled={disabled}>
       {children}
     </button>
   );

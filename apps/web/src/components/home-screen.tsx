@@ -19,6 +19,12 @@ type MenuCharacterDisplayProps = {
   side: "left" | "right";
 };
 
+type MenuEntry = {
+  disabled?: boolean;
+  href: string;
+  label: string;
+};
+
 function toAssetSegment(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -167,12 +173,13 @@ function pickRandomMenuPair(previousPair?: [string, string]): [string, string] {
   return [fighters[0].id, fighters[1]?.id ?? fighters[0].id];
 }
 
-const menuEntries = [
+const menuEntries: MenuEntry[] = [
   { href: "/fight?mode=local", label: "Fight" },
   { href: "/fight?mode=training", label: "Training" },
+  { href: "/online", label: "Find Match", disabled: true },
   { href: "/animation-lab", label: "Lab" },
   { href: "/credits", label: "Credits" },
-] as const;
+];
 
 export function HomeScreen() {
   const [stage, setStage] = useState<HomeScreenStage>("title");
@@ -351,8 +358,9 @@ export function HomeScreen() {
       <nav className="landing-menu-nav" aria-label="Main menu">
         {menuEntries.map((entry, index) => (
           <ArcadeMenuItem
-            key={entry.href}
+            key={entry.label}
             href={entry.href}
+            disabled={entry.disabled}
             className="landing-menu-link"
             style={{ animationDelay: `${index * 120}ms` }}
           >
