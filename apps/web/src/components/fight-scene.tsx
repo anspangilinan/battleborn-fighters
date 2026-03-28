@@ -86,6 +86,14 @@ type FighterAssetManifest = {
   stanceSources: Record<FightAnimationStance, string[]>;
 };
 
+const phaserModulePromise = import('phaser').then(
+  (PhaserModule) => PhaserModule.default,
+);
+const fighterAssetManifestPromiseCache = new Map<
+  string,
+  Promise<FighterAssetManifest>
+>();
+
 const movementControls: Array<Array<{ key: ControlInputKey; label: string }>> =
   [
     [{ key: 'up', label: 'W' }],
@@ -171,6 +179,12 @@ function getFighterAssetRoots(fighter: CharacterDefinition) {
   );
 }
 
+function getUniqueFighters(fighters: CharacterDefinition[]) {
+  return Array.from(
+    new Map(fighters.map((fighter) => [fighter.id, fighter])).values(),
+  );
+}
+
 async function discoverStanceFrames(
   assetRoots: string[],
   stance: FightAnimationStance,
@@ -223,6 +237,54 @@ async function discoverFighterAssets(
       string[]
     >,
   };
+}
+
+function getCachedFighterAssets(fighter: CharacterDefinition) {
+  const cachedManifest = fighterAssetManifestPromiseCache.get(fighter.id);
+
+  if (cachedManifest) {
+    return cachedManifest;
+  }
+
+  const manifestPromise = discoverFighterAssets(fighter).catch((error) => {
+    fighterAssetManifestPromiseCache.delete(fighter.id);
+    throw error;
+  });
+
+  fighterAssetManifestPromiseCache.set(fighter.id, manifestPromise);
+  return manifestPromise;
+}
+
+function queueManifestTextures(
+  scene: any,
+  manifests: Record<string, FighterAssetManifest>,
+  startIfNeeded = true,
+) {
+  const queuedBefore = scene.load.list.size;
+
+  for (const [fighterId, manifest] of Object.entries(manifests)) {
+    for (const stance of fightAnimationStances) {
+      manifest.stanceSources[stance].forEach((source, frameIndex) => {
+        const textureKey = getAnimationTextureKey(
+          fighterId,
+          stance,
+          frameIndex,
+        );
+
+        if (!scene.textures.exists(textureKey)) {
+          scene.load.image(textureKey, source);
+        }
+      });
+    }
+  }
+
+  if (
+    startIfNeeded &&
+    scene.load.list.size > queuedBefore &&
+    !scene.load.isLoading()
+  ) {
+    scene.load.start();
+  }
 }
 
 function getDesiredAnimationStance(
@@ -436,10 +498,14 @@ function getCountdownAnnouncement(state: MatchState) {
 
 export function FightScene(props: FightSceneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const arenaSceneRef = useRef<any>(null);
   const keyboardInputRef = useRef<InputState>(cloneInput());
   const pointerInputRef = useRef<InputState>(cloneInput());
   const liveInputRef = useRef<InputState>(cloneInput());
   const isPausedRef = useRef(false);
+  const fighterAssetManifestsRef = useRef<Record<string, FighterAssetManifest>>(
+    {},
+  );
   const [hudState, setHudState] = useState<MatchState | null>(null);
   const [fighterAssetManifests, setFighterAssetManifests] = useState<
     Record<string, FighterAssetManifest>
@@ -529,6 +595,7 @@ export function FightScene(props: FightSceneProps) {
 
     setIsSceneBooting(true);
     setConnectionState('Loading');
+    fighterAssetManifestsRef.current = {};
     setFighterAssetManifests({});
     isPausedRef.current = false;
     setIsPaused(false);
@@ -610,32 +677,82 @@ export function FightScene(props: FightSceneProps) {
 
     let phaserGame: any = null;
 
-    void (async () => {
-      const fightersToLoad = Array.from(
-        new Map(
-          [fighterDefinition, opponentDefinition].map((fighter) => [
-            fighter.id,
-            fighter,
-          ]),
-        ).values(),
+    const mergeFighterAssetEntries = (
+      entries: ReadonlyArray<readonly [string, FighterAssetManifest]>,
+    ) => {
+      if (destroyed || entries.length === 0) {
+        return;
+      }
+
+      const nextEntries = entries.filter(
+        ([fighterId, manifest]) =>
+          fighterAssetManifestsRef.current[fighterId] !== manifest,
       );
-      const fighterAssetEntries = await Promise.all(
-        fightersToLoad.map(
+
+      if (nextEntries.length === 0) {
+        return;
+      }
+
+      const nextManifestMap = Object.fromEntries(
+        nextEntries,
+      ) as Record<string, FighterAssetManifest>;
+      fighterAssetManifestsRef.current = {
+        ...fighterAssetManifestsRef.current,
+        ...nextManifestMap,
+      };
+      setFighterAssetManifests((current) => ({
+        ...current,
+        ...nextManifestMap,
+      }));
+
+      if (arenaSceneRef.current) {
+        queueManifestTextures(arenaSceneRef.current, nextManifestMap);
+      }
+    };
+
+    const ensureFighterAssets = async (fightersToLoad: CharacterDefinition[]) => {
+      const missingFighters = getUniqueFighters(fightersToLoad).filter(
+        (fighter) => !fighterAssetManifestsRef.current[fighter.id],
+      );
+
+      if (missingFighters.length === 0) {
+        return;
+      }
+
+      const assetEntries = await Promise.all(
+        missingFighters.map(
           async (fighter) =>
-            [fighter.id, await discoverFighterAssets(fighter)] as const,
+            [fighter.id, await getCachedFighterAssets(fighter)] as const,
         ),
       );
+
+      mergeFighterAssetEntries(assetEntries);
+    };
+
+    const ensureFighterAssetsByIds = async (
+      fighterIds: Array<string | undefined>,
+    ) => {
+      const fightersToLoad = getUniqueFighters(
+        fighterIds.flatMap((fighterId) =>
+          fighterId && roster[fighterId] ? [roster[fighterId]] : [],
+        ),
+      );
+
+      await ensureFighterAssets(fightersToLoad);
+    };
+
+    void (async () => {
+      await ensureFighterAssets([fighterDefinition, opponentDefinition]);
 
       if (destroyed) {
         return;
       }
 
-      const fighterAssetManifests = Object.fromEntries(
-        fighterAssetEntries,
-      ) as Record<string, FighterAssetManifest>;
-      setFighterAssetManifests(fighterAssetManifests);
-      const PhaserModule = await import('phaser');
-      const Phaser = PhaserModule.default;
+      const Phaser = await phaserModulePromise;
+
+      if (destroyed) {
+        return;
+      }
 
       class ArenaScene extends Phaser.Scene {
         private readonly simulationStepMs = 1000 / FPS;
@@ -664,22 +781,7 @@ export function FightScene(props: FightSceneProps) {
             );
           }
 
-          for (const [fighterId, manifest] of Object.entries(
-            fighterAssetManifests,
-          )) {
-            for (const stance of fightAnimationStances) {
-              manifest.stanceSources[stance].forEach((source, frameIndex) => {
-                const textureKey = getAnimationTextureKey(
-                  fighterId,
-                  stance,
-                  frameIndex,
-                );
-                if (!this.textures.exists(textureKey)) {
-                  this.load.image(textureKey, source);
-                }
-              });
-            }
-          }
+          queueManifestTextures(this, fighterAssetManifestsRef.current, false);
         }
 
         create() {
@@ -708,6 +810,7 @@ export function FightScene(props: FightSceneProps) {
           this.backgroundGraphics.setDepth(1);
           this.fighterGraphics = this.add.graphics();
           this.fighterGraphics.setDepth(3);
+          arenaSceneRef.current = this;
           setIsSceneBooting(false);
 
           if (props.mode === 'online') {
@@ -734,9 +837,16 @@ export function FightScene(props: FightSceneProps) {
             socket.addEventListener('message', (event) => {
               const message: ServerMessage = JSON.parse(event.data);
               if (message.type === 'snapshot') {
+                void ensureFighterAssetsByIds(
+                  message.state.fighters.map((fighter) => fighter.fighterId),
+                );
                 localState.current = message.state;
                 setHudState(message.state);
               } else if (message.type === 'room_state') {
+                void ensureFighterAssetsByIds([
+                  message.selections.host,
+                  message.selections.guest,
+                ]);
                 setConnectionState(
                   `Room ${message.roomCode} · connected ${message.connectedSlots.length}/2`,
                 );
@@ -866,7 +976,7 @@ export function FightScene(props: FightSceneProps) {
 
           state.fighters.forEach((fighter) => {
             const definition = roster[fighter.fighterId];
-            const manifest = fighterAssetManifests[fighter.fighterId];
+            const manifest = fighterAssetManifestsRef.current[fighter.fighterId];
             const activeStance = getAvailableAnimationStance(fighter, manifest);
             const existingSprite = this.fighterSprites.get(fighter.slot);
 
@@ -884,6 +994,11 @@ export function FightScene(props: FightSceneProps) {
                 activeStance,
                 frameIndex,
               );
+              if (!this.textures.exists(textureKey)) {
+                existingSprite?.setVisible(false);
+                renderFighterFallback(this.fighterGraphics, fighter, definition);
+                return;
+              }
               const sourceImage = this.textures
                 .get(textureKey)
                 .getSourceImage() as { height: number };
@@ -922,6 +1037,7 @@ export function FightScene(props: FightSceneProps) {
 
     return () => {
       destroyed = true;
+      arenaSceneRef.current = null;
       cleanupKeyboard();
       socket?.close();
       phaserGame?.destroy(true);
