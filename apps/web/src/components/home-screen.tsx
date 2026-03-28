@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { fighterRoster } from "@battleborn/content";
 
@@ -9,8 +9,10 @@ import { ArcadeMenuItem } from "@/components/arcade-menu-item";
 const fighters = Object.values(fighterRoster);
 const MAX_IDLE_FRAME_SCAN = 24;
 const MENU_IDLE_FRAME_MS = 120;
+const ACCESS_PASSWORD = "what it is";
+const ACCESS_SESSION_KEY = "battleborn-access-granted";
 
-type HomeScreenStage = "title" | "menu";
+type HomeScreenStage = "title" | "password" | "menu";
 
 type MenuCharacterDisplayProps = {
   fighter: (typeof fighters)[number] | undefined;
@@ -175,6 +177,9 @@ const menuEntries = [
 export function HomeScreen() {
   const [stage, setStage] = useState<HomeScreenStage>("title");
   const [menuPair, setMenuPair] = useState<[string, string]>(() => pickRandomMenuPair());
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const leftFighter = useMemo(
     () => fighters.find((fighter) => fighter.id === menuPair[0]) ?? fighters[0],
@@ -186,12 +191,24 @@ export function HomeScreen() {
   );
 
   useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(ACCESS_SESSION_KEY) === "true") {
+        setStage("menu");
+      }
+    } catch {
+      // Ignore storage access failures and require the password again.
+    }
+  }, []);
+
+  useEffect(() => {
     if (stage !== "title") {
       return;
     }
 
-    const advanceToMenu = () => {
-      setStage("menu");
+    const openPasswordPrompt = () => {
+      setPassword("");
+      setPasswordError("");
+      setStage("password");
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -199,15 +216,37 @@ export function HomeScreen() {
         return;
       }
 
-      advanceToMenu();
+      openPasswordPrompt();
     };
 
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("pointerdown", advanceToMenu);
+    window.addEventListener("pointerdown", openPasswordPrompt);
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("pointerdown", advanceToMenu);
+      window.removeEventListener("pointerdown", openPasswordPrompt);
+    };
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "password") {
+      return;
+    }
+
+    passwordInputRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPassword("");
+        setPasswordError("");
+        setStage("title");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [stage]);
 
@@ -226,9 +265,33 @@ export function HomeScreen() {
     };
   }, [stage]);
 
-  if (stage === "title") {
+  const submitPassword = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (password.trim().toLowerCase() !== ACCESS_PASSWORD) {
+      setPasswordError("That isn't it.");
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(ACCESS_SESSION_KEY, "true");
+    } catch {
+      // Ignore storage access failures and continue for the current session.
+    }
+
+    setPassword("");
+    setPasswordError("");
+    setStage("menu");
+  };
+
+  if (stage === "title" || stage === "password") {
     return (
-      <main className="landing-page landing-title-screen" role="button" tabIndex={0} aria-label="Press any button to open the main menu">
+      <main
+        className={`landing-page landing-title-screen${stage === "password" ? " landing-title-screen-password-open" : ""}`}
+        role={stage === "title" ? "button" : undefined}
+        tabIndex={stage === "title" ? 0 : -1}
+        aria-label={stage === "title" ? "Press any button to open the password prompt" : undefined}
+      >
         <div className="landing-title-content">
           <div className="landing-title-logo" aria-label="Battleborn Fighters">
             <span className="landing-title-logo-top">Battleborn</span>
@@ -236,6 +299,47 @@ export function HomeScreen() {
           </div>
           <p className="landing-title-prompt">Press Any Button</p>
         </div>
+
+        {stage === "password" ? (
+          <div className="landing-password-overlay" role="presentation">
+            <form
+              className="landing-password-panel"
+              onSubmit={submitPassword}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="landing-password-label"
+            >
+              <p className="landing-password-kicker">Password Required</p>
+              <label id="landing-password-label" className="landing-password-label" htmlFor="landing-password-input">
+                It is...
+              </label>
+              <input
+                ref={passwordInputRef}
+                id="landing-password-input"
+                type="password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  if (passwordError) {
+                    setPasswordError("");
+                  }
+                }}
+                className="landing-password-input"
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby={passwordError ? "landing-password-error" : undefined}
+              />
+              <div className="landing-password-actions">
+                <button type="submit" className="landing-password-submit">
+                  Enter
+                </button>
+              </div>
+              <p className={`landing-password-error${passwordError ? " landing-password-error-visible" : ""}`} id="landing-password-error">
+                {passwordError || " "}
+              </p>
+            </form>
+          </div>
+        ) : null}
       </main>
     );
   }
