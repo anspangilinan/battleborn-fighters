@@ -8,10 +8,12 @@ import type {
   MatchConfig,
   MatchState,
   PlayerSlot,
+  ProjectileRuntimeState,
 } from "./types";
 
 export const FPS = 60;
 const DASH_TAP_WINDOW_FRAMES = 10;
+const DEFAULT_ATTACK_PROJECTILE_TIER = 1;
 
 export const DEFAULT_CONFIG: MatchConfig = {
   width: 960,
@@ -75,6 +77,8 @@ export function createMatchState(
     round: 1,
     status: "countdown",
     winner: null,
+    nextProjectileId: 1,
+    projectiles: [],
     events: [],
     fighters: [
       createFighterState(1, left, playerOneName, 240, config.groundY),
@@ -170,8 +174,13 @@ export function stepMatch(
     previousFighterBX,
   );
   resolveFacing(fighterA, fighterB);
+  updateProjectiles(state, config);
+  resolveProjectileClashes(state);
+  resolveAttackProjectileClashes(state, fighterA, definitionA);
+  resolveAttackProjectileClashes(state, fighterB, definitionB);
   resolveHits(state, fighterA, fighterB, definitionA, definitionB);
   resolveHits(state, fighterB, fighterA, definitionB, definitionA);
+  resolveProjectileHits(state, roster);
 
   if (fighterA.health <= 0 || fighterB.health <= 0 || state.timerFramesRemaining === 0) {
     resolveRoundResult(state, roster, config);
@@ -203,7 +212,7 @@ function updateFighter(
     fighter.action = "hit";
     fighter.vx *= 0.9;
   } else if (fighter.attackId) {
-    advanceAttack(fighter, definition);
+    advanceAttack(state, fighter, definition, config);
   } else if (state.status === "fighting") {
     maybeStartAttack(fighter, definition, input);
     if (!fighter.attackId) {
@@ -273,7 +282,12 @@ function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDef
   fighter.vx = (move.rootVelocityX ?? 0) * fighter.facing;
 }
 
-function advanceAttack(fighter: FighterRuntimeState, definition: CharacterDefinition) {
+function advanceAttack(
+  state: MatchState,
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+  config: MatchConfig,
+) {
   const move = definition.moves[fighter.attackId ?? ""];
   if (!move) {
     fighter.attackId = null;
@@ -283,12 +297,109 @@ function advanceAttack(fighter: FighterRuntimeState, definition: CharacterDefini
   }
 
   fighter.attackFrame += 1;
+  maybeSpawnProjectile(state, fighter, definition, fighter.attackFrame, config);
   if (fighter.attackFrame > move.startup + move.active + move.recovery) {
     fighter.attackId = null;
     fighter.attackFrame = 0;
     fighter.attackConnected = false;
     fighter.action = Math.abs(fighter.vx) > 0.1 ? "walk" : "idle";
   }
+}
+
+function maybeSpawnProjectile(
+  state: MatchState,
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+  attackFrame: number,
+  config: MatchConfig,
+) {
+  const move = definition.moves[fighter.attackId ?? ""];
+  const projectile = move?.projectile;
+  if (!move || !projectile) {
+    return;
+  }
+
+  const spawnFrame = projectile.spawnFrame ?? move.startup;
+  if (attackFrame !== spawnFrame) {
+    return;
+  }
+
+  const minimumDistance = config.width * projectile.minimumDistanceRatio;
+  const maximumDistance = projectile.maximumDistanceRatio == null
+    ? undefined
+    : config.width * projectile.maximumDistanceRatio;
+  const travelFrames = Math.max(1, minimumDistance / projectile.speed);
+  const velocityX = projectile.speed * fighter.facing;
+  const spawnX = fighter.x + fighter.facing * projectile.offsetX;
+  const spawnY = fighter.y + projectile.offsetY;
+  const referenceSpawnY = config.groundY + projectile.offsetY;
+  const landingY = getProjectileLandingY(projectile, config, referenceSpawnY);
+  const { velocityY, gravity } = getProjectileVerticalMotion(
+    referenceSpawnY,
+    landingY,
+    projectile.apexHeight,
+    travelFrames,
+  );
+
+  state.projectiles.push({
+    id: state.nextProjectileId,
+    ownerSlot: fighter.slot,
+    ownerFighterId: fighter.fighterId,
+    moveId: move.id,
+    sprite: projectile.sprite,
+    tier: projectile.tier,
+    x: spawnX,
+    y: spawnY,
+    vx: velocityX,
+    vy: velocityY,
+    gravity,
+    facing: fighter.facing,
+    originX: spawnX,
+    minimumDistance,
+    maximumDistance,
+    hitbox: projectile.hitbox,
+  });
+  state.nextProjectileId += 1;
+}
+
+function getProjectileLandingY(
+  projectile: NonNullable<CharacterDefinition["moves"][string]["projectile"]>,
+  config: MatchConfig,
+  referenceSpawnY: number,
+) {
+  if (projectile.landing === "floor") {
+    return config.groundY - projectile.hitbox.y - projectile.hitbox.height;
+  }
+
+  return referenceSpawnY;
+}
+
+function getProjectileVerticalMotion(
+  spawnY: number,
+  landingY: number,
+  apexHeight: number,
+  travelFrames: number,
+) {
+  if (apexHeight <= 0) {
+    return {
+      velocityY: (landingY - spawnY) / travelFrames,
+      gravity: 0,
+    };
+  }
+
+  const peakY = Math.min(spawnY, landingY) - apexHeight;
+  const peakRise = spawnY - peakY;
+  const landingDelta = landingY - spawnY;
+  const vertexFrame = Math.abs(landingDelta) < 0.0001
+    ? travelFrames / 2
+    : (travelFrames * (Math.sqrt(peakRise * (peakRise + landingDelta)) - peakRise)) / landingDelta;
+  const safeVertexFrame = Math.max(0.0001, vertexFrame);
+  const gravity = (2 * peakRise) / (safeVertexFrame * safeVertexFrame);
+
+  return {
+    velocityY: -gravity * (safeVertexFrame + 0.5),
+    gravity,
+  };
 }
 
 function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDefinition, input: InputState) {
@@ -371,6 +482,26 @@ export function getDashDurationFrames(definition: CharacterDefinition) {
         definition.stats.movement.dash.speed,
     ),
   );
+}
+
+function updateProjectiles(state: MatchState, config: MatchConfig) {
+  state.projectiles = state.projectiles.filter((projectile) => {
+    projectile.vy += projectile.gravity;
+    projectile.x += projectile.vx;
+    projectile.y += projectile.vy;
+
+    const worldHitbox = toWorldProjectileBox(projectile, projectile.hitbox);
+    const travelDistance = Math.abs(projectile.x - projectile.originX);
+    const reachedGround = worldHitbox.y + worldHitbox.height >= config.groundY;
+    const reachedMaximumDistance = projectile.maximumDistance != null &&
+      travelDistance >= projectile.maximumDistance;
+    const leftArena =
+      worldHitbox.x + worldHitbox.width < 0 ||
+      worldHitbox.x > config.width ||
+      worldHitbox.y > config.height;
+
+    return !reachedGround && !reachedMaximumDistance && !leftArena;
+  });
 }
 
 function resolvePushboxes(
@@ -498,6 +629,141 @@ function resolveHits(
   }
 }
 
+function resolveAttackProjectileClashes(
+  state: MatchState,
+  attacker: FighterRuntimeState,
+  attackerDef: CharacterDefinition,
+) {
+  if (!attacker.attackId || state.status !== "fighting" || state.projectiles.length === 0) {
+    return;
+  }
+
+  const move = attackerDef.moves[attacker.attackId];
+  if (!move) {
+    return;
+  }
+
+  const activeStart = move.startup;
+  const activeEnd = move.startup + move.active - 1;
+  if (attacker.attackFrame < activeStart || attacker.attackFrame > activeEnd) {
+    return;
+  }
+
+  const frameBoxes = move.frameBoxes?.[attacker.attackFrame] ?? {};
+  const hitboxes = frameBoxes.hitboxes ?? [];
+  if (hitboxes.length === 0) {
+    return;
+  }
+
+  const attackHitboxes = hitboxes.map((hitbox) => toWorldBox(attacker, hitbox));
+  const destroyedProjectileIds = new Set<number>();
+
+  for (const projectile of state.projectiles) {
+    if (projectile.ownerSlot === attacker.slot || projectile.tier > DEFAULT_ATTACK_PROJECTILE_TIER) {
+      continue;
+    }
+
+    const projectileHitbox = toWorldProjectileBox(projectile, projectile.hitbox);
+    if (attackHitboxes.some((attackHitbox) => intersects(attackHitbox, projectileHitbox))) {
+      destroyedProjectileIds.add(projectile.id);
+    }
+  }
+
+  if (destroyedProjectileIds.size > 0) {
+    state.projectiles = state.projectiles.filter(
+      (projectile) => !destroyedProjectileIds.has(projectile.id),
+    );
+  }
+}
+
+function resolveProjectileClashes(state: MatchState) {
+  if (state.projectiles.length <= 1) {
+    return;
+  }
+
+  const destroyedProjectileIds = new Set<number>();
+
+  for (let index = 0; index < state.projectiles.length; index += 1) {
+    const current = state.projectiles[index];
+    if (destroyedProjectileIds.has(current.id)) {
+      continue;
+    }
+
+    const currentHitbox = toWorldProjectileBox(current, current.hitbox);
+
+    for (let otherIndex = index + 1; otherIndex < state.projectiles.length; otherIndex += 1) {
+      const other = state.projectiles[otherIndex];
+      if (destroyedProjectileIds.has(other.id)) {
+        continue;
+      }
+
+      const otherHitbox = toWorldProjectileBox(other, other.hitbox);
+      if (!intersects(currentHitbox, otherHitbox)) {
+        continue;
+      }
+
+      if (current.tier === other.tier) {
+        destroyedProjectileIds.add(current.id);
+        destroyedProjectileIds.add(other.id);
+      } else if (current.tier < other.tier) {
+        destroyedProjectileIds.add(current.id);
+      } else {
+        destroyedProjectileIds.add(other.id);
+      }
+
+      if (destroyedProjectileIds.has(current.id)) {
+        break;
+      }
+    }
+  }
+
+  if (destroyedProjectileIds.size > 0) {
+    state.projectiles = state.projectiles.filter(
+      (projectile) => !destroyedProjectileIds.has(projectile.id),
+    );
+  }
+}
+
+function resolveProjectileHits(
+  state: MatchState,
+  roster: Record<string, CharacterDefinition>,
+) {
+  if (state.status !== "fighting" || state.projectiles.length === 0) {
+    return;
+  }
+
+  const survivingProjectiles: ProjectileRuntimeState[] = [];
+
+  for (const projectile of state.projectiles) {
+    const attacker = state.fighters[projectile.ownerSlot - 1];
+    const defender = state.fighters[projectile.ownerSlot === 1 ? 1 : 0];
+    const defenderDef = roster[defender.fighterId];
+    const attackerDef = roster[projectile.ownerFighterId];
+    const move = attackerDef?.moves[projectile.moveId];
+    const projectileHitbox = toWorldProjectileBox(projectile, projectile.hitbox);
+    const hurtboxes = getHurtboxes(defender, defenderDef);
+    const collision = hurtboxes.some((hurtbox) => intersects(projectileHitbox, hurtbox));
+
+    if (!collision) {
+      survivingProjectiles.push(projectile);
+      continue;
+    }
+
+    defender.health = Math.max(0, defender.health - projectile.hitbox.damage);
+    defender.hitstun = projectile.hitbox.hitstun;
+    defender.vx = projectile.hitbox.knockbackX * projectile.facing;
+    defender.vy = -(projectile.hitbox.launchY ?? 0);
+    defender.grounded = defender.vy === 0;
+    defender.action = defender.health <= 0 ? "ko" : "hit";
+    attacker.meter = Math.min(100, attacker.meter + 12);
+    if (move) {
+      state.events.push(`${attacker.name} landed ${move.label}`);
+    }
+  }
+
+  state.projectiles = survivingProjectiles;
+}
+
 function getHurtboxes(fighter: FighterRuntimeState, definition: CharacterDefinition): Box[] {
   if (fighter.action === "dash") {
     return [];
@@ -520,6 +786,16 @@ function toWorldBox(fighter: FighterRuntimeState, box: Box): Box {
   return {
     x: fighter.x + mirroredX,
     y: fighter.y + box.y,
+    width: box.width,
+    height: box.height,
+  };
+}
+
+function toWorldProjectileBox(projectile: ProjectileRuntimeState, box: Box): Box {
+  const mirroredX = projectile.facing === 1 ? box.x : -(box.x + box.width);
+  return {
+    x: projectile.x + mirroredX,
+    y: projectile.y + box.y,
     width: box.width,
     height: box.height,
   };

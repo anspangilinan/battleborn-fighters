@@ -80,6 +80,107 @@ const fighter: CharacterDefinition = {
   },
 };
 
+function createOffPathDummy(id: string): CharacterDefinition {
+  return {
+    ...fighter,
+    id,
+    standingBoxes: {
+      hurtboxes: [{ x: -1, y: -240, width: 2, height: 2 }],
+    },
+    jumpingBoxes: {
+      hurtboxes: [{ x: -1, y: -240, width: 2, height: 2 }],
+    },
+  };
+}
+
+const projectileFighter: CharacterDefinition = {
+  ...fighter,
+  id: "projectile-fighter",
+  name: "Projectile Fighter",
+  moves: {
+    ...fighter.moves,
+    punch: {
+      ...fighter.moves.punch,
+      label: "Bolt Shot",
+      startup: 3,
+      active: 1,
+      recovery: 8,
+      frameBoxes: undefined,
+      projectile: {
+        sprite: "crossbow-bolt",
+        tier: 1,
+        offsetX: 20,
+        offsetY: -72,
+        speed: 12,
+        minimumDistanceRatio: 0.8,
+        apexHeight: 67,
+        landing: "floor",
+        hitbox: {
+          x: -18,
+          y: -4,
+          width: 36,
+          height: 8,
+          damage: 55,
+          hitstun: 9,
+          knockbackX: 6,
+        },
+      },
+    },
+  },
+};
+
+const highTierProjectileFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "high-tier-projectile-fighter",
+  name: "High Tier Projectile Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        tier: 2,
+      },
+    },
+  },
+};
+
+const fastProjectileFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "fast-projectile-fighter",
+  name: "Fast Projectile Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        speed: 18,
+      },
+    },
+  },
+};
+
+const cappedProjectileFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "capped-projectile-fighter",
+  name: "Capped Projectile Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        tier: 2,
+        apexHeight: 0,
+        landing: "origin",
+        minimumDistanceRatio: 0.5,
+        maximumDistanceRatio: 0.5,
+      },
+    },
+  },
+};
+
 test("input encoding round-trips", () => {
   const mask = encodeInput({ left: true, right: false, up: true, punch: true, kick: false, special: true });
   assert.deepEqual(decodeInput(mask), { left: true, right: false, up: true, punch: true, kick: false, special: true });
@@ -303,4 +404,319 @@ test("infinite timer configs do not tick down or end the round on time", () => {
 
   assert.equal(state.timerFramesRemaining, Number.POSITIVE_INFINITY);
   assert.equal(state.status, "fighting");
+});
+
+test("projectile punches spawn an arcing shot that can hit at range", () => {
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, projectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 180;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  for (let index = 0; index < 8 && state.projectiles.length === 0; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.projectiles.length, 1);
+  assert.ok(state.projectiles[0].vx > 0);
+  assert.ok(state.projectiles[0].vy < 0);
+
+  for (let index = 0; index < 60 && state.fighters[1].health === fighter.stats.maxHealth; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 55);
+  assert.ok(state.events.some((entry) => entry.includes("landed Bolt Shot")));
+});
+
+test("projectile apex height stays stable when speed changes", () => {
+  function simulateProjectileArc(attacker: CharacterDefinition) {
+    const offPathDummy = createOffPathDummy(`${attacker.id}-dummy`);
+    const roster = {
+      [attacker.id]: attacker,
+      [offPathDummy.id]: offPathDummy,
+    };
+    let state = createMatchState(roster, attacker.id, offPathDummy.id);
+    state.countdownFrames = 0;
+    state.status = "fighting";
+    state.fighters[0].x = 180;
+    state.fighters[1].x = 920;
+
+    state = stepMatch(
+      state,
+      roster,
+      { left: false, right: false, up: false, punch: true, kick: false, special: false },
+      EMPTY_INPUT,
+    );
+
+    let minY = Number.POSITIVE_INFINITY;
+    let aliveFrames = 0;
+    let hasSpawned = false;
+    for (let index = 0; index < 90; index += 1) {
+      state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+      const projectile = state.projectiles[0];
+      if (!projectile) {
+        if (hasSpawned) {
+          break;
+        }
+
+        continue;
+      }
+
+      hasSpawned = true;
+      minY = Math.min(minY, projectile.y);
+      aliveFrames += 1;
+    }
+
+    return { minY, aliveFrames };
+  }
+
+  const normalArc = simulateProjectileArc(projectileFighter);
+  const fastArc = simulateProjectileArc(fastProjectileFighter);
+
+  assert.ok(Math.abs(normalArc.minY - fastArc.minY) <= 2);
+  assert.ok(fastArc.aliveFrames < normalArc.aliveFrames);
+});
+
+test("ground-launched floor projectiles reach the floor around their minimum distance", () => {
+  const offPathDummy = createOffPathDummy("ground-arc-dummy");
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [offPathDummy.id]: offPathDummy,
+  };
+  let state = createMatchState(roster, projectileFighter.id, offPathDummy.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 100;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  let lastTravelDistance = 0;
+  for (let index = 0; index < 90 && (state.projectiles.length > 0 || state.fighters[0].attackId); index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+    const projectile = state.projectiles[0];
+    if (!projectile) {
+      continue;
+    }
+
+    lastTravelDistance = Math.abs(projectile.x - projectile.originX);
+  }
+
+  const minimumDistance =
+    DEFAULT_CONFIG.width * projectileFighter.moves.punch.projectile!.minimumDistanceRatio;
+  assert.equal(state.projectiles.length, 0);
+  assert.ok(lastTravelDistance >= minimumDistance - projectileFighter.moves.punch.projectile!.speed * 1.5);
+});
+
+test("aerial floor projectiles travel past their minimum distance before disappearing", () => {
+  const offPathDummy = createOffPathDummy("aerial-arc-dummy");
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [offPathDummy.id]: offPathDummy,
+  };
+  let state = createMatchState(roster, projectileFighter.id, offPathDummy.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 100;
+  state.fighters[0].y = DEFAULT_CONFIG.groundY - 180;
+  state.fighters[0].grounded = false;
+  state.fighters[0].action = "jump";
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  let lastTravelDistance = 0;
+  for (let index = 0; index < 140 && (state.projectiles.length > 0 || state.fighters[0].attackId); index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+    const projectile = state.projectiles[0];
+    if (!projectile) {
+      continue;
+    }
+
+    lastTravelDistance = Math.abs(projectile.x - projectile.originX);
+  }
+
+  const minimumDistance =
+    DEFAULT_CONFIG.width * projectileFighter.moves.punch.projectile!.minimumDistanceRatio;
+  assert.equal(state.projectiles.length, 0);
+  assert.ok(lastTravelDistance > minimumDistance + projectileFighter.moves.punch.projectile!.speed);
+});
+
+test("straight projectiles can disperse at a fixed maximum distance", () => {
+  const offPathDummy = createOffPathDummy("capped-arc-dummy");
+  const roster = {
+    [cappedProjectileFighter.id]: cappedProjectileFighter,
+    [offPathDummy.id]: offPathDummy,
+  };
+  let state = createMatchState(roster, cappedProjectileFighter.id, offPathDummy.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 100;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  let lastTravelDistance = 0;
+  for (let index = 0; index < 90 && (state.projectiles.length > 0 || state.fighters[0].attackId); index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+    const projectile = state.projectiles[0];
+    if (!projectile) {
+      continue;
+    }
+
+    lastTravelDistance = Math.abs(projectile.x - projectile.originX);
+  }
+
+  const maximumDistance =
+    DEFAULT_CONFIG.width * cappedProjectileFighter.moves.punch.projectile!.maximumDistanceRatio!;
+  assert.equal(state.projectiles.length, 0);
+  assert.ok(lastTravelDistance >= maximumDistance - cappedProjectileFighter.moves.punch.projectile!.speed);
+  assert.ok(lastTravelDistance <= maximumDistance + cappedProjectileFighter.moves.punch.projectile!.speed);
+});
+
+test("tier one projectiles can be broken by attacks", () => {
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, projectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 460;
+  state.projectiles = [
+    {
+      id: 1,
+      ownerSlot: 1,
+      ownerFighterId: projectileFighter.id,
+      moveId: "punch",
+      sprite: "crossbow-bolt",
+      tier: 1,
+      x: 440,
+      y: 355,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      facing: 1,
+      originX: 440,
+      minimumDistance: DEFAULT_CONFIG.width * 0.8,
+      hitbox: {
+        x: -18,
+        y: -4,
+        width: 36,
+        height: 8,
+        damage: 55,
+        hitstun: 9,
+        knockbackX: 6,
+      },
+    },
+  ];
+  state.nextProjectileId = 2;
+  state.fighters[1].attackId = "punch";
+  state.fighters[1].attackFrame = 0;
+  state.fighters[1].action = "attack";
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.projectiles.length, 0);
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth);
+});
+
+test("higher-tier projectiles break lower-tier projectiles on contact", () => {
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [highTierProjectileFighter.id]: highTierProjectileFighter,
+  };
+  let state = createMatchState(
+    roster,
+    projectileFighter.id,
+    highTierProjectileFighter.id,
+  );
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.projectiles = [
+    {
+      id: 1,
+      ownerSlot: 1,
+      ownerFighterId: projectileFighter.id,
+      moveId: "punch",
+      sprite: "crossbow-bolt",
+      tier: 1,
+      x: 450,
+      y: 340,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      facing: 1,
+      originX: 450,
+      minimumDistance: DEFAULT_CONFIG.width * 0.8,
+      hitbox: {
+        x: -18,
+        y: -4,
+        width: 36,
+        height: 8,
+        damage: 55,
+        hitstun: 9,
+        knockbackX: 6,
+      },
+    },
+    {
+      id: 2,
+      ownerSlot: 2,
+      ownerFighterId: highTierProjectileFighter.id,
+      moveId: "punch",
+      sprite: "crossbow-bolt",
+      tier: 2,
+      x: 450,
+      y: 340,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      facing: -1,
+      originX: 450,
+      minimumDistance: DEFAULT_CONFIG.width * 0.8,
+      hitbox: {
+        x: -18,
+        y: -4,
+        width: 36,
+        height: 8,
+        damage: 55,
+        hitstun: 9,
+        knockbackX: 6,
+      },
+    },
+  ];
+  state.nextProjectileId = 3;
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.projectiles.length, 1);
+  assert.equal(state.projectiles[0].tier, 2);
 });

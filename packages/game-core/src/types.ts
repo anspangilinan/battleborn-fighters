@@ -41,7 +41,22 @@ export interface MoveDefinition {
   recovery: number;
   rootVelocityX?: number;
   jumpCancelable?: boolean;
+  projectile?: ProjectileDefinition;
   frameBoxes?: Record<number, FrameBoxes>;
+}
+
+export interface ProjectileDefinition {
+  sprite: string;
+  tier: number;
+  spawnFrame?: number;
+  offsetX: number;
+  offsetY: number;
+  speed: number;
+  minimumDistanceRatio: number;
+  maximumDistanceRatio?: number;
+  apexHeight: number;
+  landing?: "origin" | "floor";
+  hitbox: HitBox;
 }
 
 export interface CharacterDefinition {
@@ -102,6 +117,25 @@ export interface FighterRuntimeState {
   lastInput: InputState;
 }
 
+export interface ProjectileRuntimeState {
+  id: number;
+  ownerSlot: PlayerSlot;
+  ownerFighterId: string;
+  moveId: string;
+  sprite: string;
+  tier: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  gravity: number;
+  facing: Facing;
+  originX: number;
+  minimumDistance: number;
+  maximumDistance?: number;
+  hitbox: HitBox;
+}
+
 export interface MatchConfig {
   width: number;
   height: number;
@@ -119,5 +153,7 @@ export interface MatchState {
   status: "waiting" | "countdown" | "fighting" | "round-over" | "match-over";
   winner: PlayerSlot | null;
   fighters: [FighterRuntimeState, FighterRuntimeState];
+  nextProjectileId: number;
+  projectiles: ProjectileRuntimeState[];
   events: string[];
 }

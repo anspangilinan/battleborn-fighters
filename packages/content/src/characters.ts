@@ -25,7 +25,7 @@ const morana: CharacterDefinition = {
       gravity: 1.1,
       dash: {
         distance: 92.4,
-        speed: 8.55,
+        speed: 6.55,
         lift: 8.2,
       },
     },
@@ -40,25 +40,30 @@ const morana: CharacterDefinition = {
   moves: {
     punch: {
       id: 'punch',
-      label: 'Voltage Jab',
+      label: 'Q1',
       button: 'punch',
       startup: 3,
-      active: 2,
+      active: 1,
       recovery: 9,
-      frameBoxes: {
-        3: {
-          hitboxes: [
-            hitbox({
-              x: 12,
-              y: -84,
-              width: 22,
-              height: 14,
-              damage: 60,
-              hitstun: 10,
-              knockbackX: 7,
-            }),
-          ],
-        },
+      projectile: {
+        sprite: 'morana/iceball',
+        tier: 2,
+        offsetX: 24,
+        offsetY: -55,
+        speed: 8,
+        minimumDistanceRatio: 0.5,
+        maximumDistanceRatio: 0.5,
+        apexHeight: 0,
+        landing: 'origin',
+        hitbox: hitbox({
+          x: -16,
+          y: -16,
+          width: 32,
+          height: 32,
+          damage: 60,
+          hitstun: 10,
+          knockbackX: 7,
+        }),
       },
     },
     kick: {
@@ -150,25 +155,29 @@ const mcbalut: CharacterDefinition = {
   moves: {
     punch: {
       id: 'punch',
-      label: 'Prototype Jab',
+      label: 'Q1',
       button: 'punch',
-      startup: 4,
-      active: 2,
-      recovery: 10,
-      frameBoxes: {
-        4: {
-          hitboxes: [
-            hitbox({
-              x: 14,
-              y: -82,
-              width: 24,
-              height: 16,
-              damage: 65,
-              hitstun: 10,
-              knockbackX: 8,
-            }),
-          ],
-        },
+      startup: 5,
+      active: 1,
+      recovery: 11,
+      projectile: {
+        sprite: 'mcbalut/crossbow-bolt',
+        tier: 1,
+        offsetX: 22,
+        offsetY: -84,
+        speed: 17.75,
+        minimumDistanceRatio: 0.55,
+        apexHeight: 56,
+        landing: 'floor',
+        hitbox: hitbox({
+          x: -18,
+          y: -4,
+          width: 36,
+          height: 8,
+          damage: 62,
+          hitstun: 11,
+          knockbackX: 8,
+        }),
       },
     },
     kick: {

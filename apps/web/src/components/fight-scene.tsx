@@ -104,6 +104,11 @@ const fighterAssetManifestPromiseCache = new Map<
   string,
   Promise<FighterAssetManifest>
 >();
+const projectileAssetSourcePromiseCache = new Map<
+  string,
+  Promise<string | null>
+>();
+const projectileAssetExtensions = ['png', 'webp', 'svg', 'jpg', 'jpeg'];
 
 const movementControls: Array<Array<{ key: ControlInputKey; label: string }>> =
   [
@@ -153,6 +158,60 @@ async function discoverImageSource(
   }
 
   return null;
+}
+
+function getProjectileSpriteName(sprite: string) {
+  const basename = sprite.split('/').at(-1) ?? sprite;
+  return basename.replace(/\.[^.]+$/, '');
+}
+
+function getProjectileAssetSourceCandidates(sprite: string) {
+  const normalizedSprite = sprite.trim().replace(/^\/+/, '');
+  const basePath = normalizedSprite.startsWith('projectiles/')
+    ? `/${normalizedSprite}`
+    : `/projectiles/${normalizedSprite}`;
+
+  if (/\.[a-z0-9]+$/i.test(basePath)) {
+    return [basePath];
+  }
+
+  return projectileAssetExtensions.map((extension) => `${basePath}.${extension}`);
+}
+
+function getUniqueProjectileSprites(fighters: CharacterDefinition[]) {
+  return Array.from(
+    new Set(
+      fighters.flatMap((fighter) =>
+        Object.values(fighter.moves).flatMap((move) =>
+          move.projectile ? [move.projectile.sprite] : [],
+        ),
+      ),
+    ),
+  );
+}
+
+function getCachedProjectileAssetSource(sprite: string) {
+  const cached = projectileAssetSourcePromiseCache.get(sprite);
+  if (cached) {
+    return cached;
+  }
+
+  const nextPromise = discoverImageSource(
+    getProjectileAssetSourceCandidates(sprite),
+  )
+    .then((source) => {
+      if (!source) {
+        projectileAssetSourcePromiseCache.delete(sprite);
+      }
+
+      return source;
+    })
+    .catch((error) => {
+      projectileAssetSourcePromiseCache.delete(sprite);
+      throw error;
+    });
+  projectileAssetSourcePromiseCache.set(sprite, nextPromise);
+  return nextPromise;
 }
 
 async function loadSequentialFrames(assetDirectory: string) {
@@ -286,6 +345,35 @@ function queueManifestTextures(
           scene.load.image(textureKey, source);
         }
       });
+    }
+  }
+
+  if (
+    startIfNeeded &&
+    scene.load.list.size > queuedBefore &&
+    !scene.load.isLoading()
+  ) {
+    scene.load.start();
+  }
+}
+
+function queueProjectileTextures(
+  scene: any,
+  projectileSources: Record<string, string>,
+  startIfNeeded = true,
+) {
+  const queuedBefore = scene.load.list.size;
+
+  for (const [sprite, source] of Object.entries(projectileSources)) {
+    const textureKey = getProjectileTextureKey(sprite);
+    if (scene.textures.exists(textureKey)) {
+      continue;
+    }
+
+    if (source.endsWith('.svg') && typeof scene.load.svg === 'function') {
+      scene.load.svg(textureKey, source);
+    } else {
+      scene.load.image(textureKey, source);
     }
   }
 
@@ -435,6 +523,35 @@ function getAnimationTextureKey(
   return `${fighterId}:animation:${stance}:${frameIndex}`;
 }
 
+function getProjectileTextureKey(sprite: string) {
+  return `projectile:${sprite}`;
+}
+
+function getProjectileSpriteScale(
+  projectile: MatchState['projectiles'][number],
+  sourceImage: { width: number; height: number },
+) {
+  if (getProjectileSpriteName(projectile.sprite) === 'iceball') {
+    return Math.max(
+      (projectile.hitbox.width * 1.5) / sourceImage.width,
+      (projectile.hitbox.height * 1.5) / sourceImage.height,
+    );
+  }
+
+  return Math.max(
+    (projectile.hitbox.width * 1.8) / sourceImage.width,
+    (projectile.hitbox.height * 3.2) / sourceImage.height,
+  );
+}
+
+function getProjectileTrailAlphas(projectile: MatchState['projectiles'][number]) {
+  if (getProjectileSpriteName(projectile.sprite) === 'iceball') {
+    return [0.42, 0.28, 0.18, 0.1];
+  }
+
+  return [];
+}
+
 function getFullscreenElement(currentDocument: FullscreenCapableDocument) {
   return currentDocument.fullscreenElement ?? currentDocument.webkitFullscreenElement ?? null;
 }
@@ -475,6 +592,15 @@ function getDashVisualLift(
 function createAiInput(state: MatchState): InputState {
   const player = state.fighters[1];
   const target = state.fighters[0];
+  const playerDefinition = roster[player.fighterId];
+  const punchRange = playerDefinition?.moves.punch.projectile
+    ? DEFAULT_CONFIG.width *
+      (
+        playerDefinition.moves.punch.projectile.maximumDistanceRatio ??
+        playerDefinition.moves.punch.projectile.minimumDistanceRatio
+      ) *
+      0.45
+    : 46;
   if (state.status !== 'fighting') {
     return EMPTY_INPUT;
   }
@@ -484,7 +610,7 @@ function createAiInput(state: MatchState): InputState {
     left: distance < -70,
     right: distance > 70,
     up: !player.grounded && player.y < target.y - 40,
-    punch: Math.abs(distance) < 46 && state.frame % 50 === 0,
+    punch: Math.abs(distance) < punchRange && state.frame % 50 === 0,
     kick: Math.abs(distance) < 72 && state.frame % 80 === 0,
     special: Math.abs(distance) < 120 && state.frame % 160 === 0,
   };
@@ -526,6 +652,66 @@ function renderFighterFallback(
   }
 }
 
+function renderProjectileFallback(
+  graphics: any,
+  projectile: MatchState['projectiles'][number],
+) {
+  if (getProjectileSpriteName(projectile.sprite) === 'iceball') {
+    graphics.fillStyle(0x5af6ff, 0.18);
+    graphics.fillCircle(projectile.x, projectile.y, 28);
+    graphics.fillStyle(0x9ffcff, 0.34);
+    graphics.fillCircle(projectile.x, projectile.y, 20);
+    graphics.lineStyle(5, 0xd9ffff, 0.85);
+    graphics.strokeCircle(projectile.x, projectile.y, 15);
+
+    graphics.lineStyle(4, 0x8de8ff, 0.5);
+    graphics.beginPath();
+    graphics.moveTo(projectile.x - projectile.facing * 28, projectile.y - 10);
+    graphics.lineTo(projectile.x - projectile.facing * 8, projectile.y - 4);
+    graphics.moveTo(projectile.x - projectile.facing * 26, projectile.y + 8);
+    graphics.lineTo(projectile.x - projectile.facing * 10, projectile.y + 4);
+    graphics.strokePath();
+    return;
+  }
+
+  const angle = Math.atan2(projectile.vy, projectile.vx);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const baseX = projectile.x;
+  const baseY = projectile.y;
+
+  graphics.lineStyle(8, 0x44dfff, 0.28);
+  graphics.beginPath();
+  graphics.moveTo(baseX - cos * 34, baseY - sin * 34);
+  graphics.lineTo(baseX + cos * 8, baseY + sin * 8);
+  graphics.strokePath();
+
+  graphics.fillStyle(0xfff3b1, 0.22);
+  graphics.fillEllipse(baseX, baseY, 40, 18);
+
+  graphics.lineStyle(6, 0xd8b35d, 1);
+  graphics.beginPath();
+  graphics.moveTo(baseX - cos * 20, baseY - sin * 20);
+  graphics.lineTo(baseX + cos * 16, baseY + sin * 16);
+  graphics.strokePath();
+
+  graphics.fillStyle(0xe9ecef, 1);
+  graphics.beginPath();
+  graphics.moveTo(baseX + cos * 24, baseY + sin * 24);
+  graphics.lineTo(baseX + cos * 8 - sin * 8, baseY + sin * 8 + cos * 8);
+  graphics.lineTo(baseX + cos * 8 + sin * 8, baseY + sin * 8 - cos * 8);
+  graphics.closePath();
+  graphics.fillPath();
+
+  graphics.lineStyle(5, 0x7f2f1c, 1);
+  graphics.beginPath();
+  graphics.moveTo(baseX - cos * 20, baseY - sin * 20);
+  graphics.lineTo(baseX - cos * 11 - sin * 9, baseY - sin * 11 + cos * 9);
+  graphics.moveTo(baseX - cos * 20, baseY - sin * 20);
+  graphics.lineTo(baseX - cos * 11 + sin * 9, baseY - sin * 11 - cos * 9);
+  graphics.strokePath();
+}
+
 function colorToNumber(hex: string) {
   return Number.parseInt(hex.replace('#', ''), 16);
 }
@@ -561,6 +747,7 @@ export function FightScene(props: FightSceneProps) {
   const fighterAssetManifestsRef = useRef<Record<string, FighterAssetManifest>>(
     {},
   );
+  const projectileAssetSourcesRef = useRef<Record<string, string>>({});
   const [hudState, setHudState] = useState<MatchState | null>(null);
   const [fighterAssetManifests, setFighterAssetManifests] = useState<
     Record<string, FighterAssetManifest>
@@ -686,6 +873,7 @@ export function FightScene(props: FightSceneProps) {
     setIsSceneBooting(true);
     setConnectionState('Loading');
     fighterAssetManifestsRef.current = {};
+    projectileAssetSourcesRef.current = {};
     setFighterAssetManifests({});
     isPausedRef.current = false;
     setIsPaused(false);
@@ -800,6 +988,37 @@ export function FightScene(props: FightSceneProps) {
       }
     };
 
+    const mergeProjectileAssetEntries = (
+      entries: ReadonlyArray<readonly [string, string]>,
+    ) => {
+      if (destroyed || entries.length === 0) {
+        return;
+      }
+
+      const nextEntries = entries.filter(
+        ([sprite, source]) => projectileAssetSourcesRef.current[sprite] !== source,
+      );
+
+      if (nextEntries.length === 0) {
+        return;
+      }
+
+      const nextProjectileSourceMap = Object.fromEntries(
+        nextEntries,
+      ) as Record<string, string>;
+      projectileAssetSourcesRef.current = {
+        ...projectileAssetSourcesRef.current,
+        ...nextProjectileSourceMap,
+      };
+
+      if (arenaSceneRef.current) {
+        queueProjectileTextures(
+          arenaSceneRef.current,
+          nextProjectileSourceMap,
+        );
+      }
+    };
+
     const ensureFighterAssets = async (fightersToLoad: CharacterDefinition[]) => {
       const missingFighters = getUniqueFighters(fightersToLoad).filter(
         (fighter) => !fighterAssetManifestsRef.current[fighter.id],
@@ -819,7 +1038,30 @@ export function FightScene(props: FightSceneProps) {
       mergeFighterAssetEntries(assetEntries);
     };
 
-    const ensureFighterAssetsByIds = async (
+    const ensureProjectileAssets = async (
+      fightersToLoad: CharacterDefinition[],
+    ) => {
+      const projectileSprites = getUniqueProjectileSprites(
+        getUniqueFighters(fightersToLoad),
+      );
+
+      if (projectileSprites.length === 0) {
+        return;
+      }
+
+      const assetEntries = (
+        await Promise.all(
+          projectileSprites.map(async (sprite) => {
+            const source = await getCachedProjectileAssetSource(sprite);
+            return source ? ([sprite, source] as const) : null;
+          }),
+        )
+      ).flatMap((entry) => (entry ? [entry] : []));
+
+      mergeProjectileAssetEntries(assetEntries);
+    };
+
+    const ensureAssetsByIds = async (
       fighterIds: Array<string | undefined>,
     ) => {
       const fightersToLoad = getUniqueFighters(
@@ -828,11 +1070,17 @@ export function FightScene(props: FightSceneProps) {
         ),
       );
 
-      await ensureFighterAssets(fightersToLoad);
+      await Promise.all([
+        ensureFighterAssets(fightersToLoad),
+        ensureProjectileAssets(fightersToLoad),
+      ]);
     };
 
     void (async () => {
-      await ensureFighterAssets([fighterDefinition, opponentDefinition]);
+      await Promise.all([
+        ensureFighterAssets([fighterDefinition, opponentDefinition]),
+        ensureProjectileAssets([fighterDefinition, opponentDefinition]),
+      ]);
 
       if (destroyed) {
         return;
@@ -853,11 +1101,85 @@ export function FightScene(props: FightSceneProps) {
         private fighterGraphics!: InstanceType<
           typeof Phaser.GameObjects.Graphics
         >;
+        private projectileGraphics!: InstanceType<
+          typeof Phaser.GameObjects.Graphics
+        >;
         private fighterSprites = new Map<
           1 | 2,
           InstanceType<typeof Phaser.GameObjects.Image>
         >();
+        private projectileSprites = new Map<
+          number,
+          InstanceType<typeof Phaser.GameObjects.Image>
+        >();
+        private projectileTrailSprites = new Map<
+          number,
+          Array<InstanceType<typeof Phaser.GameObjects.Image>>
+        >();
         private simulationAccumulatorMs = 0;
+
+        private destroyProjectileVisual(projectileId: number) {
+          const projectileSprite = this.projectileSprites.get(projectileId);
+          projectileSprite?.destroy();
+          this.projectileSprites.delete(projectileId);
+
+          this.clearProjectileTrailSprites(projectileId);
+        }
+
+        private clearProjectileTrailSprites(projectileId: number) {
+          const trailSprites = this.projectileTrailSprites.get(projectileId) ?? [];
+          trailSprites.forEach((trailSprite) => trailSprite.destroy());
+          this.projectileTrailSprites.delete(projectileId);
+        }
+
+        private syncProjectileTrailSprites(
+          projectile: MatchState['projectiles'][number],
+          textureKey: string,
+          scale: number,
+        ) {
+          const trailAlphas = getProjectileTrailAlphas(projectile);
+          const existingTrailSprites =
+            this.projectileTrailSprites.get(projectile.id) ?? [];
+
+          if (trailAlphas.length === 0) {
+            existingTrailSprites.forEach((trailSprite) => trailSprite.destroy());
+            this.projectileTrailSprites.delete(projectile.id);
+            return;
+          }
+
+          const velocityMagnitude = Math.hypot(projectile.vx, projectile.vy);
+          const directionX =
+            velocityMagnitude > 0.001 ? projectile.vx / velocityMagnitude : projectile.facing;
+          const directionY =
+            velocityMagnitude > 0.001 ? projectile.vy / velocityMagnitude : 0;
+          const spacing = Math.max(projectile.hitbox.width * 0.6, 14);
+          const rotation = Math.atan2(projectile.vy, projectile.vx);
+          const nextTrailSprites = trailAlphas.map((alpha, index) => {
+            const trailSprite =
+              existingTrailSprites[index] ??
+              this.add.image(projectile.x, projectile.y, textureKey);
+            const offset = spacing * (index + 1);
+
+            trailSprite.setTexture(textureKey);
+            trailSprite.setVisible(true);
+            trailSprite.setDepth(3.9 - index * 0.01);
+            trailSprite.setOrigin(0.5, 0.5);
+            trailSprite.setPosition(
+              projectile.x - directionX * offset,
+              projectile.y - directionY * offset,
+            );
+            trailSprite.setRotation(rotation);
+            trailSprite.setScale(scale * (1 - index * 0.08));
+            trailSprite.setAlpha(alpha);
+            return trailSprite;
+          });
+
+          existingTrailSprites
+            .slice(trailAlphas.length)
+            .forEach((trailSprite) => trailSprite.destroy());
+
+          this.projectileTrailSprites.set(projectile.id, nextTrailSprites);
+        }
 
         constructor() {
           super('arena');
@@ -872,6 +1194,11 @@ export function FightScene(props: FightSceneProps) {
           }
 
           queueManifestTextures(this, fighterAssetManifestsRef.current, false);
+          queueProjectileTextures(
+            this,
+            projectileAssetSourcesRef.current,
+            false,
+          );
         }
 
         create() {
@@ -900,6 +1227,8 @@ export function FightScene(props: FightSceneProps) {
           this.backgroundGraphics.setDepth(1);
           this.fighterGraphics = this.add.graphics();
           this.fighterGraphics.setDepth(3);
+          this.projectileGraphics = this.add.graphics();
+          this.projectileGraphics.setDepth(4);
           arenaSceneRef.current = this;
           setIsSceneBooting(false);
 
@@ -927,13 +1256,13 @@ export function FightScene(props: FightSceneProps) {
             socket.addEventListener('message', (event) => {
               const message: ServerMessage = JSON.parse(event.data);
               if (message.type === 'snapshot') {
-                void ensureFighterAssetsByIds(
+                void ensureAssetsByIds(
                   message.state.fighters.map((fighter) => fighter.fighterId),
                 );
                 localState.current = message.state;
                 setHudState(message.state);
               } else if (message.type === 'room_state') {
-                void ensureFighterAssetsByIds([
+                void ensureAssetsByIds([
                   message.selections.host,
                   message.selections.guest,
                 ]);
@@ -1005,6 +1334,7 @@ export function FightScene(props: FightSceneProps) {
         draw(state: MatchState) {
           this.backgroundGraphics.clear();
           this.fighterGraphics.clear();
+          this.projectileGraphics.clear();
           if (!this.arenaBackground) {
             this.backgroundGraphics.fillGradientStyle(
               0x13233a,
@@ -1112,6 +1442,57 @@ export function FightScene(props: FightSceneProps) {
               existingSprite?.setVisible(false);
               renderFighterFallback(this.fighterGraphics, fighter, definition);
             }
+          });
+
+          const activeProjectileIds = new Set(
+            state.projectiles.map((projectile) => projectile.id),
+          );
+          for (const projectileId of new Set([
+            ...this.projectileSprites.keys(),
+            ...this.projectileTrailSprites.keys(),
+          ])) {
+            if (activeProjectileIds.has(projectileId)) {
+              continue;
+            }
+
+            this.destroyProjectileVisual(projectileId);
+          }
+
+          state.projectiles.forEach((projectile) => {
+            const textureKey = getProjectileTextureKey(projectile.sprite);
+            const existingSprite = this.projectileSprites.get(projectile.id);
+
+            if (!this.textures.exists(textureKey)) {
+              renderProjectileFallback(this.projectileGraphics, projectile);
+              existingSprite?.setVisible(false);
+              this.clearProjectileTrailSprites(projectile.id);
+              return;
+            }
+
+            const sourceImage = this.textures
+              .get(textureKey)
+              .getSourceImage() as { width: number; height: number };
+            const spriteScale = getProjectileSpriteScale(projectile, sourceImage);
+            const projectileSprite =
+              existingSprite ??
+              this.add.image(projectile.x, projectile.y, textureKey);
+
+            projectileSprite.setTexture(textureKey);
+            projectileSprite.setVisible(true);
+            projectileSprite.setDepth(4);
+            projectileSprite.setOrigin(0.5, 0.5);
+            projectileSprite.setPosition(projectile.x, projectile.y);
+            projectileSprite.setRotation(
+              Math.atan2(projectile.vy, projectile.vx),
+            );
+            projectileSprite.setScale(spriteScale);
+            projectileSprite.setAlpha(1);
+            this.projectileSprites.set(projectile.id, projectileSprite);
+            this.syncProjectileTrailSprites(
+              projectile,
+              textureKey,
+              spriteScale,
+            );
           });
         }
       }

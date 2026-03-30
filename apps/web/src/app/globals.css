@@ -691,6 +691,13 @@ span {
   pointer-events: none;
 }
 
+.fight-hud-center {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: clamp(8px, 1.2cqw, 14px);
+}
+
 .fight-hud-slot {
   display: grid;
   align-items: center;
@@ -774,13 +781,25 @@ span {
 .fight-hud-name {
   color: #f7f4dc;
   font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
-  font-size: clamp(1rem, 1.9cqw, 1.45rem);
+  font-size: clamp(1.2rem, 2.3cqw, 1.8rem);
   letter-spacing: 0.08em;
   line-height: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow:
+    -2px -2px 0 rgba(6, 10, 18, 0.9),
+    2px -2px 0 rgba(6, 10, 18, 0.9),
+    -2px 2px 0 rgba(6, 10, 18, 0.9),
+    2px 2px 0 rgba(6, 10, 18, 0.9);
+}
+
+.fight-hud-name::first-letter,
+.fight-character-select-name::first-letter {
+  color: #ffd53a;
+  font-size: 1.5em;
+  line-height: 0.82;
   text-shadow:
     -2px -2px 0 rgba(6, 10, 18, 0.9),
     2px -2px 0 rgba(6, 10, 18, 0.9),
@@ -818,6 +837,28 @@ span {
     -2px 2px 0 rgba(6, 10, 18, 0.9),
     2px 2px 0 rgba(6, 10, 18, 0.9);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.fight-hud-rounds {
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 0.6cqw, 8px);
+}
+
+.fight-hud-round-dot {
+  width: clamp(12px, 1.5cqw, 18px);
+  height: clamp(12px, 1.5cqw, 18px);
+  border: 2px solid rgba(244, 243, 232, 0.72);
+  border-radius: 999px;
+  background: rgba(3, 6, 14, 0.18);
+  box-shadow: inset 0 0 0 2px rgba(5, 9, 18, 0.48);
+}
+
+.fight-hud-round-dot-filled {
+  background: linear-gradient(180deg, #fff48b 0%, #ffd53a 52%, #f2b300 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 249, 213, 0.46),
+    0 0 12px rgba(255, 213, 58, 0.28);
 }
 
 .fight-character-select {
@@ -1123,30 +1164,67 @@ span {
 }
 
 .fight-control-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: clamp(54px, 6cqw, 76px);
-  min-height: clamp(54px, 6cqw, 76px);
-  border: 1px solid rgba(244, 243, 232, 0.24);
-  border-radius: 18px;
-  background: rgba(7, 16, 26, 0.5);
+  width: clamp(58px, 6.8cqw, 82px);
+  height: clamp(58px, 6.8cqw, 82px);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 3px solid rgba(224, 236, 255, 0.72);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(55, 92, 131, 0.98), rgba(55, 92, 131, 0.98)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.12) 0 4px,
+      rgba(255, 255, 255, 0) 4px 8px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(14, 25, 39, 0.16) 0 4px,
+      rgba(14, 25, 39, 0) 4px 8px
+    );
   color: rgba(244, 243, 232, 0.92);
   font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
-  font-size: clamp(1.3rem, 2.6cqw, 1.9rem);
-  letter-spacing: 0.08em;
+  font-size: clamp(1.95rem, 3.9cqw, 2.7rem);
+  line-height: 1;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  backdrop-filter: blur(12px);
+  text-shadow: 2px 2px 0 rgba(10, 18, 30, 0.7);
   transition: transform 90ms ease, background 90ms ease, border-color 90ms ease, box-shadow 90ms ease;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    inset 0 0 0 3px rgba(132, 170, 214, 0.36),
+    0 0 0 3px rgba(11, 18, 31, 0.42);
   cursor: pointer;
+  appearance: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .fight-control-button-active {
-  transform: translateY(2px) scale(0.96);
-  background: rgba(91, 226, 143, 0.5);
-  border-color: rgba(91, 226, 143, 0.78);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+  transform: scale(0.95);
+  background:
+    linear-gradient(180deg, rgba(88, 214, 162, 0.98), rgba(88, 214, 162, 0.98)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.12) 0 4px,
+      rgba(255, 255, 255, 0) 4px 8px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(16, 73, 54, 0.16) 0 4px,
+      rgba(16, 73, 54, 0) 4px 8px
+    );
+  border-color: rgba(198, 255, 228, 0.86);
+  box-shadow:
+    inset 0 0 0 3px rgba(214, 255, 238, 0.2),
+    0 0 0 3px rgba(14, 45, 33, 0.42);
 }
 
 .fight-loading-overlay {
@@ -1602,13 +1680,23 @@ span {
   }
 
   .fight-hud-name {
-    font-size: 0.88rem;
+    font-size: 1.02rem;
+  }
+
+  .fight-hud-center {
+    gap: 6px;
   }
 
   .fight-hud-timer {
     min-width: 54px;
     border-width: 2px;
     font-size: 1.45rem;
+  }
+
+  .fight-hud-round-dot {
+    width: 12px;
+    height: 12px;
+    border-width: 2px;
   }
 
   .fight-pause-title {
@@ -1634,10 +1722,10 @@ span {
   }
 
   .fight-control-button {
-    min-width: 52px;
-    min-height: 52px;
-    border-radius: 16px;
-    font-size: 1.2rem;
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+    font-size: 1.8rem;
   }
 
   .animation-panel-head {
@@ -1698,7 +1786,11 @@ span {
   }
 
   .fight-hud-name {
-    font-size: 0.82rem;
+    font-size: 0.94rem;
+  }
+
+  .fight-hud-center {
+    gap: 6px;
   }
 
   .fight-hud-timer {
@@ -1706,6 +1798,12 @@ span {
     padding: 4px 8px;
     border-width: 2px;
     font-size: 1.3rem;
+  }
+
+  .fight-hud-round-dot {
+    width: 11px;
+    height: 11px;
+    border-width: 2px;
   }
 
   .fight-pause-title {
@@ -1735,9 +1833,9 @@ span {
   }
 
   .fight-control-button {
-    min-width: 52px;
-    min-height: 52px;
-    border-radius: 16px;
-    font-size: 1.2rem;
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+    font-size: 1.8rem;
   }
 }

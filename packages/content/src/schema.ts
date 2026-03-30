@@ -20,6 +20,20 @@ const boxSchema = z.object({
   height: z.number().positive(),
 });
 
+const projectileSchema = z.object({
+  sprite: z.string(),
+  tier: z.number().int().positive(),
+  spawnFrame: z.number().int().nonnegative().optional(),
+  offsetX: z.number(),
+  offsetY: z.number(),
+  speed: z.number().positive(),
+  minimumDistanceRatio: z.number().positive().max(1),
+  maximumDistanceRatio: z.number().positive().max(1).optional(),
+  apexHeight: z.number().nonnegative(),
+  landing: z.enum(["origin", "floor"]).optional(),
+  hitbox: hitboxSchema,
+});
+
 export const characterSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -62,6 +76,7 @@ export const characterSchema = z.object({
     recovery: z.number().int().nonnegative(),
     rootVelocityX: z.number().optional(),
     jumpCancelable: z.boolean().optional(),
+    projectile: projectileSchema.optional(),
     frameBoxes: z.record(
       z.string(),
       z.object({

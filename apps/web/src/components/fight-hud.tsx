@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fighterRoster } from "@battleborn/content";
-import type { MatchState } from "@battleborn/game-core";
+import { DEFAULT_CONFIG, type MatchState } from "@battleborn/game-core";
 
 type FightHudProps = {
   state: MatchState;
@@ -13,6 +13,11 @@ type FightHudProps = {
 type FightHudSlotProps = {
   fighter: MatchState["fighters"][number];
   headshotSource?: string | null;
+  side: "left" | "right";
+};
+
+type FightHudRoundsProps = {
+  wins: number;
   side: "left" | "right";
 };
 
@@ -70,6 +75,19 @@ function FightHudSlot({ fighter, headshotSource, side }: FightHudSlotProps) {
   );
 }
 
+function FightHudRounds({ wins, side }: FightHudRoundsProps) {
+  return (
+    <div className={`fight-hud-rounds fight-hud-rounds-${side}`}>
+      {Array.from({ length: DEFAULT_CONFIG.roundsToWin }).map((_, index) => (
+        <span
+          key={`${side}-round-${index}`}
+          className={`fight-hud-round-dot${wins > index ? " fight-hud-round-dot-filled" : ""}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function FightHud({ state, headshots }: FightHudProps) {
   const [leftFighter, rightFighter] = useMemo(
     () => [...state.fighters].sort((first, second) => first.slot - second.slot),
@@ -82,7 +100,11 @@ export function FightHud({ state, headshots }: FightHudProps) {
   return (
     <div className="fight-hud-shell" aria-hidden="true">
       <FightHudSlot fighter={leftFighter} headshotSource={headshots[leftFighter.fighterId]} side="left" />
-      <div className="fight-hud-timer">{timerLabel}</div>
+      <div className="fight-hud-center">
+        <FightHudRounds wins={leftFighter.wins} side="left" />
+        <div className="fight-hud-timer">{timerLabel}</div>
+        <FightHudRounds wins={rightFighter.wins} side="right" />
+      </div>
       <FightHudSlot fighter={rightFighter} headshotSource={headshots[rightFighter.fighterId]} side="right" />
     </div>
   );
