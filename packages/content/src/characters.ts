@@ -132,7 +132,7 @@ const mcbalut: CharacterDefinition = {
     shadow: '#1d3b28',
   },
   sprites: {
-    portrait: '/characters/mcbalut/animations/portrait.png',
+    portrait: '/characters/mcbalut/portrait.png',
     renderHeight: 110,
   },
   stats: {
