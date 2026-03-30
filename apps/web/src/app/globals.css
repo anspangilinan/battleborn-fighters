@@ -1315,6 +1315,57 @@ span {
   color: #fff07f;
 }
 
+.fight-training-panel {
+  position: absolute;
+  top: clamp(96px, 14cqh, 132px);
+  right: clamp(12px, 2.4cqw, 28px);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.fight-training-toggle {
+  display: inline-flex;
+  padding: 4px;
+  border: 2px solid rgba(224, 236, 255, 0.7);
+  background: rgba(4, 8, 14, 0.86);
+  box-shadow:
+    inset 0 0 0 2px rgba(8, 14, 24, 0.76),
+    0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+.fight-training-toggle-button {
+  min-width: clamp(52px, 7cqw, 68px);
+  min-height: clamp(28px, 4cqh, 34px);
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: rgba(214, 226, 244, 0.78);
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(0.82rem, 1.4cqw, 1rem);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  text-shadow:
+    -1px -1px 0 rgba(8, 12, 20, 0.88),
+    1px -1px 0 rgba(8, 12, 20, 0.88),
+    -1px 1px 0 rgba(8, 12, 20, 0.88),
+    1px 1px 0 rgba(8, 12, 20, 0.88);
+  cursor: pointer;
+  appearance: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fight-training-toggle-button-active {
+  background:
+    linear-gradient(180deg, #fff48b 0%, #ffd53a 52%, #f2b300 100%);
+  color: #10161f;
+  text-shadow: none;
+}
+
 .fight-loading-overlay {
   position: absolute;
   inset: 0;
@@ -1809,6 +1860,17 @@ span {
     padding: 14px;
   }
 
+  .fight-training-panel {
+    top: 86px;
+    right: 10px;
+  }
+
+  .fight-training-toggle-button {
+    min-width: 46px;
+    min-height: 26px;
+    padding: 0 8px;
+  }
+
   .fight-controls-row {
     gap: 8px;
   }
@@ -1900,6 +1962,17 @@ span {
     width: 11px;
     height: 11px;
     border-width: 2px;
+  }
+
+  .fight-training-panel {
+    top: 80px;
+    right: 10px;
+  }
+
+  .fight-training-toggle-button {
+    min-width: 42px;
+    min-height: 24px;
+    font-size: 0.76rem;
   }
 
   .fight-pause-title {

@@ -35,6 +35,7 @@ const TRAINING_CONFIG = {
 };
 
 type FightMode = 'local' | 'training' | 'online';
+type TrainingOpponentMode = 'idle' | 'bot';
 type ControlInputKey = keyof Pick<
   InputState,
   'up' | 'left' | 'right' | 'punch' | 'kick' | 'special'
@@ -780,6 +781,7 @@ export function FightScene(props: FightSceneProps) {
   const pointerInputRef = useRef<InputState>(cloneInput());
   const liveInputRef = useRef<InputState>(cloneInput());
   const isPausedRef = useRef(false);
+  const trainingOpponentModeRef = useRef<TrainingOpponentMode>('idle');
   const fighterAssetManifestsRef = useRef<Record<string, FighterAssetManifest>>(
     {},
   );
@@ -794,6 +796,8 @@ export function FightScene(props: FightSceneProps) {
   const [isFullscreenSupported, setIsFullscreenSupported] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playerSlot, setPlayerSlot] = useState<1 | 2>(1);
+  const [trainingOpponentMode, setTrainingOpponentMode] =
+    useState<TrainingOpponentMode>('idle');
   const [visualInput, setVisualInput] = useState<InputState>(() =>
     cloneInput(),
   );
@@ -905,6 +909,18 @@ export function FightScene(props: FightSceneProps) {
   }, [props.fighterId, props.mode, props.opponentId, props.roomCode]);
 
   useEffect(() => {
+    if (props.mode !== 'training' || isSceneBooting) {
+      return;
+    }
+
+    setConnectionState(
+      trainingOpponentMode === 'bot'
+        ? 'Training mode running against a sparring bot.'
+        : 'Training mode running against an immobile dummy.',
+    );
+  }, [isSceneBooting, props.mode, trainingOpponentMode]);
+
+  useEffect(() => {
     const currentDocument = document as FullscreenCapableDocument;
 
     const syncFullscreenState = () => {
@@ -950,6 +966,8 @@ export function FightScene(props: FightSceneProps) {
     isPausedRef.current = false;
     setIsPaused(false);
     setPlayerSlot(1);
+    setTrainingOpponentMode('idle');
+    trainingOpponentModeRef.current = 'idle';
     clearInputs();
     hasReportedResult.current = false;
     let destroyed = false;
@@ -1377,7 +1395,9 @@ export function FightScene(props: FightSceneProps) {
             while (this.simulationAccumulatorMs >= this.simulationStepMs) {
               const opponentInput =
                 props.mode === 'training'
-                  ? EMPTY_INPUT
+                  ? trainingOpponentModeRef.current === 'bot'
+                    ? createAiInput(localState.current)
+                    : EMPTY_INPUT
                   : createAiInput(localState.current);
               localState.current = stepMatch(
                 localState.current,
@@ -1738,6 +1758,31 @@ export function FightScene(props: FightSceneProps) {
           state={hudState}
           headshots={hudHeadshots}
         />
+      ) : null}
+      {!isSceneBooting && props.mode === 'training' ? (
+        <div
+          className="fight-training-panel"
+          role="group"
+          aria-label="Training opponent behavior"
+        >
+          <div className="fight-training-toggle">
+            {(['idle', 'bot'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`fight-training-toggle-button${trainingOpponentMode === mode ? ' fight-training-toggle-button-active' : ''}`}
+                aria-pressed={trainingOpponentMode === mode}
+                onClick={() => {
+                  trainingOpponentModeRef.current = mode;
+                  setTrainingOpponentMode(mode);
+                  focusMatch();
+                }}
+              >
+                {mode === 'idle' ? 'Idle' : 'Bot'}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
       {!isSceneBooting && countdownAnnouncement ? (
         <div
