@@ -520,7 +520,7 @@ function getAnimationFrameIndex(
     case 'hurt':
       return Math.floor(matchFrame / 4) % frameCount;
     case 'ko':
-      return Math.min(frameCount - 1, Math.floor(matchFrame / 8) % frameCount);
+      return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 8));
     case 'attack1':
     case 'attack2':
     case 'special': {

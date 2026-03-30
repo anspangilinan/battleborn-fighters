@@ -587,7 +587,7 @@ const quaneshalatonya: CharacterDefinition = {
 };
 
 export const characterDefinitions: CharacterDefinition[] = [
-  quaneshalatonya,
+  // quaneshalatonya,
   paraktaktak,
   digv,
   mcbalut,

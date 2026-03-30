@@ -108,6 +108,7 @@ export interface FighterRuntimeState {
   lastTapDirection: Facing | 0;
   lastTapFrame: number;
   action: FighterAction;
+  actionFrames: number;
   health: number;
   attackId: string | null;
   attackFrame: number;
@@ -150,6 +151,7 @@ export interface MatchConfig {
 export interface MatchState {
   frame: number;
   countdownFrames: number;
+  roundOverFramesRemaining: number;
   timerFramesRemaining: number;
   roomCode?: string;
   round: number;

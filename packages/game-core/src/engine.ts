@@ -14,6 +14,7 @@ import type {
 export const FPS = 60;
 const DASH_TAP_WINDOW_FRAMES = 10;
 const DEFAULT_ATTACK_PROJECTILE_TIER = 1;
+const ROUND_OVER_FRAMES = FPS * 2;
 
 export const DEFAULT_CONFIG: MatchConfig = {
   width: 960,
@@ -73,6 +74,7 @@ export function createMatchState(
   return {
     frame: 0,
     countdownFrames: FPS * 2,
+    roundOverFramesRemaining: 0,
     timerFramesRemaining: config.roundSeconds * FPS,
     round: 1,
     status: "countdown",
@@ -109,6 +111,7 @@ function createFighterState(
     lastTapDirection: 0,
     lastTapFrame: DASH_TAP_WINDOW_FRAMES + 1,
     action: "idle",
+    actionFrames: 0,
     health: definition.stats.maxHealth,
     attackId: null,
     attackFrame: 0,
@@ -177,20 +180,28 @@ export function stepMatch(
     previousFighterBX,
   );
   resolveFacing(fighterA, fighterB);
-  updateProjectiles(state, config);
-  resolveProjectileClashes(state);
-  resolveAttackProjectileClashes(state, fighterA, definitionA);
-  resolveAttackProjectileClashes(state, fighterB, definitionB);
-  resolveHits(state, fighterA, fighterB, definitionA, definitionB);
-  resolveHits(state, fighterB, fighterA, definitionB, definitionA);
-  resolveProjectileHits(state, roster);
+  if (state.status === "fighting") {
+    updateProjectiles(state, config);
+    resolveProjectileClashes(state);
+    resolveAttackProjectileClashes(state, fighterA, definitionA);
+    resolveAttackProjectileClashes(state, fighterB, definitionB);
+    resolveHits(state, fighterA, fighterB, definitionA, definitionB);
+    resolveHits(state, fighterB, fighterA, definitionB, definitionA);
+    resolveProjectileHits(state, roster);
 
-  if (fighterA.health <= 0 || fighterB.health <= 0 || state.timerFramesRemaining === 0) {
-    resolveRoundResult(state, roster, config);
+    if (fighterA.health <= 0 || fighterB.health <= 0 || state.timerFramesRemaining === 0) {
+      startRoundOver(state);
+    }
+  } else if (state.status === "round-over") {
+    state.projectiles = [];
+    state.roundOverFramesRemaining = Math.max(0, state.roundOverFramesRemaining - 1);
+    if (state.roundOverFramesRemaining === 0) {
+      resolveRoundResult(state, roster, config);
+    }
   }
 
-  fighterA.lastInput = cloneInput(inputA);
-  fighterB.lastInput = cloneInput(inputB);
+  state.fighters[0].lastInput = cloneInput(inputA);
+  state.fighters[1].lastInput = cloneInput(inputB);
   return state;
 }
 
@@ -202,6 +213,7 @@ function updateFighter(
   input: InputState,
   config: MatchConfig,
 ) {
+  const previousAction = fighter.action;
   fighter.lastTapFrame = Math.min(fighter.lastTapFrame + 1, DASH_TAP_WINDOW_FRAMES + 1);
   tickMoveCooldowns(fighter, definition);
 
@@ -254,6 +266,10 @@ function updateFighter(
   if (opponent.health <= 0) {
     fighter.vx *= 0.8;
   }
+
+  fighter.actionFrames = fighter.action === previousAction
+    ? fighter.actionFrames + 1
+    : 0;
 }
 
 function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDefinition, input: InputState) {
@@ -922,4 +938,10 @@ function resolveRoundResult(
   nextRound.fighters[1].wins = rightWins;
   nextRound.events = state.events;
   Object.assign(state, nextRound);
+}
+
+function startRoundOver(state: MatchState) {
+  state.status = "round-over";
+  state.roundOverFramesRemaining = ROUND_OVER_FRAMES;
+  state.projectiles = [];
 }

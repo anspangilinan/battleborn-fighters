@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
+import { DEFAULT_CONFIG, EMPTY_INPUT, FPS, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
 import type { CharacterDefinition } from "./types";
 
 const fighter: CharacterDefinition = {
@@ -546,6 +546,38 @@ test("infinite timer configs do not tick down or end the round on time", () => {
 
   assert.equal(state.timerFramesRemaining, Number.POSITIVE_INFINITY);
   assert.equal(state.status, "fighting");
+});
+
+test("knockouts pause in round-over before resetting into the next round", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[1].health = 0;
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.status, "round-over");
+  assert.equal(state.round, 1);
+  assert.equal(state.fighters[1].action, "ko");
+  assert.equal(state.fighters[0].wins, 0);
+  assert.ok(state.roundOverFramesRemaining > 0);
+
+  let framesWaited = 0;
+  while (state.status === "round-over" && framesWaited < FPS * 3) {
+    const previousFramesRemaining = state.roundOverFramesRemaining;
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+    framesWaited += 1;
+    if (state.status === "round-over") {
+      assert.ok(state.roundOverFramesRemaining < previousFramesRemaining);
+    }
+  }
+
+  assert.equal(state.status, "countdown");
+  assert.equal(state.round, 2);
+  assert.equal(state.fighters[0].wins, 1);
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth);
+  assert.ok(state.events.some((entry) => entry.includes("wins round 1")));
 });
 
 test("projectile punches spawn an arcing shot that can hit at range", () => {
