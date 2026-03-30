@@ -345,7 +345,7 @@ const paraktaktak: CharacterDefinition = {
   },
   sprites: {
     portrait: '/characters/paraktaktak/portrait.png',
-    renderHeight: 180,
+    renderHeight: 165,
   },
   stats: {
     maxHealth: 1030,
