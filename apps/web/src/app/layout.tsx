@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 
 import "./globals.css";
+
+const charybdis = localFont({
+  src: "./fonts/chary___.ttf",
+  variable: "--font-ui",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Battleborn Fighters",
@@ -21,7 +28,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
-      <body>
+      <body className={charybdis.variable}>
         <div className="app-shell">
           <div className="app-frame">
             <div className="app-content">{children}</div>

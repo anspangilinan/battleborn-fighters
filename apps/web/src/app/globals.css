@@ -24,7 +24,7 @@ body {
   min-height: 100%;
   background: #000;
   color: var(--text);
-  font-family: "Trebuchet MS", "Verdana", sans-serif;
+  font-family: var(--font-ui), "Trebuchet MS", "Verdana", sans-serif;
 }
 
 body {
@@ -153,7 +153,7 @@ span {
 
 .landing-title-logo-top,
 .landing-title-logo-bottom {
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(4.4rem, 13cqw, 10rem);
   letter-spacing: 0.04em;
 }
@@ -169,7 +169,7 @@ span {
 .landing-title-prompt {
   margin: 0;
   color: #33d9ff;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(1.6rem, 4cqw, 3rem);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -198,7 +198,7 @@ span {
 
 .landing-password-label {
   color: #fff07f;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(2.4rem, 6cqw, 4rem);
   letter-spacing: 0.06em;
   line-height: 0.95;
@@ -268,7 +268,7 @@ span {
   border: 5px solid rgba(246, 243, 232, 0.66);
   background: rgba(3, 6, 14, 0.84);
   color: #d8d6d8;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(3rem, 7.8cqw, 5.4rem);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -361,7 +361,7 @@ span {
 .credits-copy {
   margin: 0;
   color: #f6f3e8;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(3.8rem, 10cqw, 8rem);
   letter-spacing: 0.04em;
   line-height: 0.9;
@@ -773,10 +773,9 @@ span {
 
 .fight-hud-name {
   color: #f7f4dc;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(1rem, 1.9cqw, 1.45rem);
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   line-height: 1;
   min-width: 0;
   overflow: hidden;
@@ -809,7 +808,7 @@ span {
   border: 3px solid rgba(244, 243, 232, 0.72);
   background: rgba(3, 6, 14, 0.92);
   color: #f7f4dc;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(1.8rem, 3.4cqw, 2.6rem);
   line-height: 1;
   text-align: center;
@@ -939,11 +938,10 @@ span {
 .fight-character-select-name {
   margin: 0;
   color: #f6f3e8;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(0.9rem, 2.2cqw, 2rem);
   letter-spacing: 0.08em;
   line-height: 0.92;
-  text-transform: uppercase;
   text-align: center;
   text-shadow:
     -2px -2px 0 rgba(8, 12, 20, 0.92),
@@ -957,7 +955,7 @@ span {
   align-items: center;
   justify-content: center;
   color: #fff07f;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(1.4rem, 4.4cqw, 4.6rem);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1046,7 +1044,7 @@ span {
 
 .fight-countdown-title {
   color: #fff07f;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(4.6rem, 13cqw, 9rem);
   letter-spacing: 0.12em;
   line-height: 0.86;
@@ -1079,7 +1077,7 @@ span {
 
 .fight-pause-title {
   color: #fff07f;
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(5rem, 15cqw, 10rem);
   letter-spacing: 0.14em;
   line-height: 0.9;
@@ -1134,7 +1132,7 @@ span {
   border-radius: 18px;
   background: rgba(7, 16, 26, 0.5);
   color: rgba(244, 243, 232, 0.92);
-  font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(1.3rem, 2.6cqw, 1.9rem);
   letter-spacing: 0.08em;
   text-transform: uppercase;

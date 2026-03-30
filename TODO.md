@@ -10,8 +10,10 @@ Missing elements
   - [ ] BGM
   - [ ] Generic combat SFX
 
-- [ ] Custom typography & iconography
-   - [ ] For names, controller, text
+- [x] Custom typography
+   - [x] For names, controller, text
+
+- [ ] Custom iconography
 
 - [ ] Post-fight dialog and menu
 - [ ] User stats
