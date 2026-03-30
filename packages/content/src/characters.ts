@@ -278,23 +278,28 @@ const digv: CharacterDefinition = {
       label: 'Prototype Jab',
       button: 'punch',
       startup: 4,
-      active: 2,
+      active: 1,
       recovery: 10,
       cooldownSeconds: 0.6,
-      frameBoxes: {
-        4: {
-          hitboxes: [
-            hitbox({
-              x: 14,
-              y: -82,
-              width: 24,
-              height: 16,
-              damage: 65,
-              hitstun: 10,
-              knockbackX: 8,
-            }),
-          ],
-        },
+      projectile: {
+        sprite: 'digv/fireball',
+        tier: 2,
+        offsetX: 24,
+        offsetY: -55,
+        speed: 8,
+        minimumDistanceRatio: 0.6,
+        maximumDistanceRatio: 0.6,
+        apexHeight: 0,
+        landing: 'origin',
+        hitbox: hitbox({
+          x: -16,
+          y: -16,
+          width: 32,
+          height: 32,
+          damage: 65,
+          hitstun: 10,
+          knockbackX: 8,
+        }),
       },
     },
     kick: {
