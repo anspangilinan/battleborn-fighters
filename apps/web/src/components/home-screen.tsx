@@ -81,8 +81,29 @@ async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
   return [];
 }
 
+async function discoverPortraitSource(fighter: (typeof fighters)[number]) {
+  const roots = Array.from(new Set([fighter.id, toAssetSegment(fighter.name)]));
+  if (await preloadImage(fighter.sprites.portrait)) {
+    return fighter.sprites.portrait;
+  }
+
+  const portraitCandidates = roots.flatMap((root) => [
+    `/characters/${root}/portrait.png`,
+    `/characters/${root}/animations/portrait.png`,
+  ]);
+
+  for (const candidate of portraitCandidates) {
+    if (await preloadImage(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
   const [frameSources, setFrameSources] = useState<string[]>([]);
+  const [portraitSource, setPortraitSource] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState(0);
 
   useEffect(() => {
@@ -91,19 +112,25 @@ function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
     async function loadFrames() {
       if (!fighter) {
         setFrameSources([]);
+        setPortraitSource(null);
         setCurrentFrame(0);
         return;
       }
 
       setFrameSources([]);
+      setPortraitSource(null);
       setCurrentFrame(0);
-      const discoveredFrames = await discoverIdleFrames(fighter);
+      const [discoveredFrames, discoveredPortrait] = await Promise.all([
+        discoverIdleFrames(fighter),
+        discoverPortraitSource(fighter),
+      ]);
 
       if (cancelled) {
         return;
       }
 
       setFrameSources(discoveredFrames);
+      setPortraitSource(discoveredPortrait);
     }
 
     void loadFrames();
@@ -131,7 +158,7 @@ function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
     return null;
   }
 
-  const currentSource = frameSources[currentFrame];
+  const currentSource = frameSources[currentFrame] ?? portraitSource;
   const renderHeight = (fighter.sprites.renderHeight ?? 168) * 3;
 
   return (

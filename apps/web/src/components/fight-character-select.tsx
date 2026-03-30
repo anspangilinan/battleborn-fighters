@@ -92,6 +92,14 @@ async function discoverHeadshotSource(fighter: (typeof fighters)[number]) {
   ]);
 }
 
+async function discoverPortraitSource(fighter: (typeof fighters)[number]) {
+  const assetRoots = getFighterAssetRoots(fighter);
+  return discoverImageSource([
+    fighter.sprites.portrait,
+    ...assetRoots.flatMap((root) => [`${root}/portrait.png`, `${root}/animations/portrait.png`]),
+  ]);
+}
+
 async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
   const assetRoots = getFighterAssetRoots(fighter);
   const candidateDirectories = assetRoots.flatMap((root) => [
@@ -111,6 +119,7 @@ async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
 
 function useIdleAnimation(fighter: (typeof fighters)[number] | undefined) {
   const [idleFrames, setIdleFrames] = useState<string[]>([]);
+  const [portraitSource, setPortraitSource] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState(0);
 
   useEffect(() => {
@@ -119,19 +128,25 @@ function useIdleAnimation(fighter: (typeof fighters)[number] | undefined) {
     async function loadIdleAnimation() {
       if (!fighter) {
         setIdleFrames([]);
+        setPortraitSource(null);
         setCurrentFrame(0);
         return;
       }
 
       setIdleFrames([]);
+      setPortraitSource(null);
       setCurrentFrame(0);
-      const discoveredFrames = await discoverIdleFrames(fighter);
+      const [discoveredFrames, discoveredPortrait] = await Promise.all([
+        discoverIdleFrames(fighter),
+        discoverPortraitSource(fighter),
+      ]);
 
       if (cancelled) {
         return;
       }
 
       setIdleFrames(discoveredFrames);
+      setPortraitSource(discoveredPortrait);
     }
 
     void loadIdleAnimation();
@@ -155,7 +170,7 @@ function useIdleAnimation(fighter: (typeof fighters)[number] | undefined) {
     };
   }, [currentFrame, idleFrames]);
 
-  return idleFrames[currentFrame] ?? null;
+  return idleFrames[currentFrame] ?? portraitSource;
 }
 
 function CharacterPreview({ fighter, facing }: CharacterPreviewProps) {

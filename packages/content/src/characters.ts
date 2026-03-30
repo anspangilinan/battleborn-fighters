@@ -444,7 +444,118 @@ const paraktaktak: CharacterDefinition = {
   },
 };
 
+const quaneshalatonya: CharacterDefinition = {
+  id: 'quaneshalatonya',
+  name: 'Quaneshalatonya',
+  style: 'Grace / midrange',
+  palette: {
+    primary: '#ff78b0',
+    accent: '#ffd670',
+    shadow: '#4d1437',
+  },
+  sprites: {
+    portrait: '/characters/quaneshalatonya/portrait.png',
+    renderHeight: 152,
+  },
+  stats: {
+    maxHealth: 980,
+    movement: {
+      walkSpeed: 4.2,
+      jumpVelocity: 18.2,
+      gravity: 1.05,
+      dash: {
+        distance: 116,
+        speed: 9.667,
+        lift: 6.4,
+      },
+    },
+    pushWidth: 23,
+  },
+  standingBoxes: {
+    hurtboxes: [{ x: -21, y: -108, width: 42, height: 108 }],
+  },
+  jumpingBoxes: {
+    hurtboxes: [{ x: -23, y: -94, width: 46, height: 94 }],
+  },
+  moves: {
+    punch: {
+      id: 'punch',
+      label: 'Crown Flick',
+      button: 'punch',
+      startup: 3,
+      active: 2,
+      recovery: 9,
+      frameBoxes: {
+        3: {
+          hitboxes: [
+            hitbox({
+              x: 16,
+              y: -88,
+              width: 24,
+              height: 14,
+              damage: 58,
+              hitstun: 11,
+              knockbackX: 7,
+            }),
+          ],
+        },
+      },
+    },
+    kick: {
+      id: 'kick',
+      label: 'Velvet Heel',
+      button: 'kick',
+      startup: 5,
+      active: 3,
+      recovery: 11,
+      frameBoxes: {
+        5: {
+          hitboxes: [
+            hitbox({
+              x: 20,
+              y: -74,
+              width: 32,
+              height: 18,
+              damage: 88,
+              hitstun: 13,
+              knockbackX: 10,
+              launchY: 5,
+            }),
+          ],
+        },
+      },
+    },
+    special: {
+      id: 'special',
+      label: 'Royal Break',
+      button: 'special',
+      startup: 8,
+      active: 5,
+      recovery: 14,
+      rootVelocityX: 4.9,
+      frameBoxes: {
+        8: {
+          hitboxes: [
+            hitbox({
+              x: 28,
+              y: -90,
+              width: 34,
+              height: 20,
+              damage: 112,
+              hitstun: 18,
+              knockbackX: 15,
+              launchY: 6,
+            }),
+          ],
+          hurtboxes: [{ x: -20, y: -106, width: 52, height: 106 }],
+        },
+      },
+    },
+  },
+};
+
 export const characterDefinitions: CharacterDefinition[] = [
+  quaneshalatonya,
   paraktaktak,
   digv,
   mcbalut,
