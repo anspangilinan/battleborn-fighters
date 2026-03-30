@@ -24,3 +24,7 @@ Missing elements
   - [ ] Random characters as audience
   - [ ] Non playable characters as audience
 - [ ] COMBOS
+
+- [ ] Animations
+  - [ ] Back walk
+  - [ ] Hurt t2, t3
