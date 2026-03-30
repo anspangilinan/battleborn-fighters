@@ -408,7 +408,7 @@ const paraktaktak: CharacterDefinition = {
               y: -82,
               width: 24,
               height: 16,
-              damage: 65,
+              damage: 90,
               hitstun: 10,
               knockbackX: 8,
             }),
