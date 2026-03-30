@@ -817,8 +817,14 @@ span {
     2px 2px 0 rgba(6, 10, 18, 0.9);
 }
 
-.fight-hud-name::first-letter,
-.fight-character-select-name::first-letter {
+.fight-display-name-prefix,
+.fight-display-name-highlight {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.fight-display-name-highlight {
   color: #ffd53a;
   font-size: 1.5em;
   line-height: 0.82;

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { fighterRoster } from "@battleborn/content";
 
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
+import { FightDisplayName } from "@/components/fight-display-name";
 
 const fighters = Object.values(fighterRoster);
 const MAX_IDLE_FRAME_SCAN = 24;
@@ -190,7 +191,7 @@ function CharacterPreview({ fighter, facing }: CharacterPreviewProps) {
           <div className="animation-spinner" aria-hidden="true" />
         )}
       </div>
-      <p className="fight-character-select-name">{fighter.name}</p>
+      <FightDisplayName className="fight-character-select-name" name={fighter.name} />
     </div>
   );
 }

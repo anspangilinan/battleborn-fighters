@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fighterRoster } from "@battleborn/content";
 import { DEFAULT_CONFIG, type MatchState } from "@battleborn/game-core";
 
+import { FightDisplayName } from "@/components/fight-display-name";
+
 type FightHudProps = {
   state: MatchState;
   headshots: Partial<Record<string, string | null>>;
@@ -40,7 +42,12 @@ function FightHudSlot({ fighter, headshotSource, side }: FightHudSlotProps) {
   const previousRatioRef = useRef(healthRatio);
   const damageFlashTimeoutRef = useRef<number | null>(null);
   const [isTakingDamage, setIsTakingDamage] = useState(false);
-  const nameNode = <div className={`fight-hud-name fight-hud-name-${side}`}>{fighter.name}</div>;
+  const nameNode = (
+    <FightDisplayName
+      className={`fight-hud-name fight-hud-name-${side}`}
+      name={fighter.name}
+    />
+  );
   const roundNode = <FightHudRounds wins={fighter.wins} side={side} />;
 
   useEffect(() => {
