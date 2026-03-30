@@ -40,6 +40,7 @@ export interface MoveDefinition {
   active: number;
   recovery: number;
   cooldownSeconds?: number;
+  meleeRange?: number;
   rootVelocityX?: number;
   jumpCancelable?: boolean;
   projectile?: ProjectileDefinition;

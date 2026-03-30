@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, stepMatch } from "./engine";
+import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
 import type { CharacterDefinition } from "./types";
 
 const fighter: CharacterDefinition = {
@@ -194,6 +194,19 @@ const cooldownFighter: CharacterDefinition = {
   },
 };
 
+const extendedRangeFighter: CharacterDefinition = {
+  ...fighter,
+  id: "extended-range-fighter",
+  name: "Extended Range Fighter",
+  moves: {
+    ...fighter.moves,
+    punch: {
+      ...fighter.moves.punch,
+      meleeRange: 52,
+    },
+  },
+};
+
 test("input encoding round-trips", () => {
   const mask = encodeInput({ left: true, right: false, up: true, punch: true, kick: false, special: true });
   assert.deepEqual(decodeInput(mask), { left: true, right: false, up: true, punch: true, kick: false, special: true });
@@ -217,6 +230,47 @@ test("fighters take damage when an attack overlaps hurtboxes", () => {
 
   assert.equal(state.fighters[1].health, 950);
   assert.ok(state.events.some((entry) => entry.includes("landed Punch")));
+});
+
+test("configured melee range extends attack reach", () => {
+  const baseRoster = { [fighter.id]: fighter };
+  let baseState = createMatchState(baseRoster, fighter.id, fighter.id);
+  baseState.countdownFrames = 0;
+  baseState.status = "fighting";
+  baseState.fighters[0].x = 420;
+  baseState.fighters[1].x = 476;
+
+  baseState = stepMatch(
+    baseState,
+    baseRoster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+  baseState = stepMatch(baseState, baseRoster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(baseState.fighters[1].health, fighter.stats.maxHealth);
+
+  const rangedRoster = {
+    [extendedRangeFighter.id]: extendedRangeFighter,
+    [fighter.id]: fighter,
+  };
+  let rangedState = createMatchState(rangedRoster, extendedRangeFighter.id, fighter.id);
+  rangedState.countdownFrames = 0;
+  rangedState.status = "fighting";
+  rangedState.fighters[0].x = 420;
+  rangedState.fighters[1].x = 476;
+
+  rangedState = stepMatch(
+    rangedState,
+    rangedRoster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+  rangedState = stepMatch(rangedState, rangedRoster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(getMoveMeleeRange(extendedRangeFighter.moves.punch), 52);
+  assert.equal(rangedState.fighters[1].health, fighter.stats.maxHealth - 50);
+  assert.ok(rangedState.events.some((entry) => entry.includes("landed Punch")));
 });
 
 test("move cooldowns block attacks until the configured frames expire", () => {

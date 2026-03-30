@@ -301,6 +301,30 @@ export function getMoveCooldownFrames(
   return Math.max(0, Math.round((move.cooldownSeconds ?? 0) * FPS));
 }
 
+export function getMoveMeleeRange(
+  move: Pick<
+    NonNullable<CharacterDefinition["moves"][string]>,
+    "meleeRange" | "projectile" | "frameBoxes"
+  >,
+) {
+  if (move.projectile) {
+    return 0;
+  }
+
+  if (move.meleeRange != null) {
+    return move.meleeRange;
+  }
+
+  const hitboxes = Object.values(move.frameBoxes ?? {}).flatMap(
+    (frameBoxes) => frameBoxes.hitboxes ?? [],
+  );
+  if (hitboxes.length === 0) {
+    return 0;
+  }
+
+  return Math.max(...hitboxes.map((hitbox) => hitbox.x + hitbox.width));
+}
+
 function advanceAttack(
   state: MatchState,
   fighter: FighterRuntimeState,
@@ -624,12 +648,15 @@ function resolveHits(
     return;
   }
 
-  const frameBoxes = move.frameBoxes?.[attacker.attackFrame] ?? {};
-  const hitboxes = frameBoxes.hitboxes ?? [];
+  const hitboxes = getMoveFrameHitboxes(move, attacker.attackFrame);
+  const meleeRangeOffset = getMeleeHitboxRangeOffset(move, hitboxes);
   const hurtboxes = getHurtboxes(defender, defenderDef);
 
   for (const hitbox of hitboxes) {
-    const worldHitbox = toWorldBox(attacker, hitbox);
+    const worldHitbox = toWorldBox(
+      attacker,
+      offsetBoxX(hitbox, meleeRangeOffset),
+    );
     const collision = hurtboxes.some((hurtbox) => intersects(worldHitbox, hurtbox));
     if (!collision) {
       continue;
@@ -668,13 +695,15 @@ function resolveAttackProjectileClashes(
     return;
   }
 
-  const frameBoxes = move.frameBoxes?.[attacker.attackFrame] ?? {};
-  const hitboxes = frameBoxes.hitboxes ?? [];
+  const hitboxes = getMoveFrameHitboxes(move, attacker.attackFrame);
   if (hitboxes.length === 0) {
     return;
   }
 
-  const attackHitboxes = hitboxes.map((hitbox) => toWorldBox(attacker, hitbox));
+  const meleeRangeOffset = getMeleeHitboxRangeOffset(move, hitboxes);
+  const attackHitboxes = hitboxes.map((hitbox) =>
+    toWorldBox(attacker, offsetBoxX(hitbox, meleeRangeOffset))
+  );
   const destroyedProjectileIds = new Set<number>();
 
   for (const projectile of state.projectiles) {
@@ -798,6 +827,36 @@ function getHurtboxes(fighter: FighterRuntimeState, definition: CharacterDefinit
 
   const source = fighter.grounded ? definition.standingBoxes : definition.jumpingBoxes;
   return (source.hurtboxes ?? []).map((box) => toWorldBox(fighter, box));
+}
+
+function getMoveFrameHitboxes(
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+  attackFrame: number,
+) {
+  return move.frameBoxes?.[attackFrame]?.hitboxes ?? [];
+}
+
+function getMeleeHitboxRangeOffset(
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+  hitboxes: Box[],
+) {
+  if (move.projectile || move.meleeRange == null || hitboxes.length === 0) {
+    return 0;
+  }
+
+  const baseRange = Math.max(...hitboxes.map((hitbox) => hitbox.x + hitbox.width));
+  return move.meleeRange - baseRange;
+}
+
+function offsetBoxX<T extends Box>(box: T, xOffset: number): T {
+  if (xOffset === 0) {
+    return box;
+  }
+
+  return {
+    ...box,
+    x: box.x + xOffset,
+  };
 }
 
 function toWorldBox(fighter: FighterRuntimeState, box: Box): Box {

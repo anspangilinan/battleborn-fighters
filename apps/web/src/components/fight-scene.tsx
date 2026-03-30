@@ -16,6 +16,7 @@ import {
   encodeInput,
   getDashDurationFrames,
   getMoveCooldownFrames,
+  getMoveMeleeRange,
   stepMatch,
   type CharacterDefinition,
   type InputState,
@@ -613,18 +614,29 @@ function getDashVisualLift(
   return dash.lift * Math.sin(Math.PI * progress);
 }
 
+function getMoveAiRange(move: CharacterDefinition['moves'][string] | undefined) {
+  if (!move) {
+    return 0;
+  }
+
+  if (move.projectile) {
+    return (
+      DEFAULT_CONFIG.width *
+      (move.projectile.maximumDistanceRatio ?? move.projectile.minimumDistanceRatio) *
+      0.45
+    );
+  }
+
+  return getMoveMeleeRange(move) + 18 + Math.max(0, (move.rootVelocityX ?? 0) * move.startup);
+}
+
 function createAiInput(state: MatchState): InputState {
   const player = state.fighters[1];
   const target = state.fighters[0];
   const playerDefinition = roster[player.fighterId];
-  const punchRange = playerDefinition?.moves.punch.projectile
-    ? DEFAULT_CONFIG.width *
-      (
-        playerDefinition.moves.punch.projectile.maximumDistanceRatio ??
-        playerDefinition.moves.punch.projectile.minimumDistanceRatio
-      ) *
-      0.45
-    : 46;
+  const punchRange = getMoveAiRange(playerDefinition?.moves.punch);
+  const kickRange = getMoveAiRange(playerDefinition?.moves.kick);
+  const specialRange = getMoveAiRange(playerDefinition?.moves.special);
   if (state.status !== 'fighting') {
     return EMPTY_INPUT;
   }
@@ -635,8 +647,8 @@ function createAiInput(state: MatchState): InputState {
     right: distance > 70,
     up: !player.grounded && player.y < target.y - 40,
     punch: Math.abs(distance) < punchRange && state.frame % 50 === 0,
-    kick: Math.abs(distance) < 72 && state.frame % 80 === 0,
-    special: Math.abs(distance) < 120 && state.frame % 160 === 0,
+    kick: Math.abs(distance) < kickRange && state.frame % 80 === 0,
+    special: Math.abs(distance) < specialRange && state.frame % 160 === 0,
   };
 }
 

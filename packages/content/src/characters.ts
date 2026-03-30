@@ -372,9 +372,9 @@ const paraktaktak: CharacterDefinition = {
       jumpVelocity: 17,
       gravity: 1.08,
       dash: {
-        distance: 93,
-        speed: 11.625,
-        lift: 4.8,
+        distance: 104,
+        speed: 8.625,
+        lift: 6,
       },
     },
     pushWidth: 24,
@@ -391,9 +391,10 @@ const paraktaktak: CharacterDefinition = {
       label: 'Tak Strike',
       button: 'punch',
       startup: 4,
-      active: 2,
+      active: 6,
       recovery: 10,
       cooldownSeconds: 0.55,
+      meleeRange: 150,
       frameBoxes: {
         4: {
           hitboxes: [
@@ -418,6 +419,7 @@ const paraktaktak: CharacterDefinition = {
       active: 3,
       recovery: 12,
       cooldownSeconds: 0.85,
+      meleeRange: 64,
       frameBoxes: {
         6: {
           hitboxes: [
@@ -443,6 +445,7 @@ const paraktaktak: CharacterDefinition = {
       active: 5,
       recovery: 15,
       cooldownSeconds: 1.45,
+      meleeRange: 74,
       rootVelocityX: 4.6,
       frameBoxes: {
         8: {

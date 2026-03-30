@@ -70,14 +70,15 @@ export const characterSchema = z.object({
   moves: z.record(z.string(), z.object({
     id: z.string(),
     label: z.string(),
-  button: z.enum(["punch", "kick", "special"]),
-  startup: z.number().int().nonnegative(),
-  active: z.number().int().positive(),
-  recovery: z.number().int().nonnegative(),
-  cooldownSeconds: z.number().nonnegative().optional(),
-  rootVelocityX: z.number().optional(),
-  jumpCancelable: z.boolean().optional(),
-  projectile: projectileSchema.optional(),
+    button: z.enum(["punch", "kick", "special"]),
+    startup: z.number().int().nonnegative(),
+    active: z.number().int().positive(),
+    recovery: z.number().int().nonnegative(),
+    cooldownSeconds: z.number().nonnegative().optional(),
+    meleeRange: z.number().positive().optional(),
+    rootVelocityX: z.number().optional(),
+    jumpCancelable: z.boolean().optional(),
+    projectile: projectileSchema.optional(),
     frameBoxes: z.record(
       z.string(),
       z.object({
