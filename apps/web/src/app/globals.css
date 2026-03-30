@@ -693,9 +693,9 @@ span {
 
 .fight-hud-center {
   display: grid;
-  grid-template-columns: auto auto auto;
-  align-items: center;
-  gap: clamp(8px, 1.2cqw, 14px);
+  justify-items: center;
+  align-content: start;
+  gap: clamp(4px, 0.8cqh, 8px);
 }
 
 .fight-hud-slot {
@@ -778,7 +778,29 @@ span {
   animation: fight-hud-hit-flash 220ms ease-out;
 }
 
+.fight-hud-meta {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1cqw, 12px);
+  width: 100%;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.fight-hud-meta-left {
+  grid-column: 2;
+  grid-row: 2;
+  justify-content: flex-start;
+}
+
+.fight-hud-meta-right {
+  grid-column: 1;
+  grid-row: 2;
+  justify-content: flex-end;
+}
+
 .fight-hud-name {
+  flex: 1 1 auto;
   color: #f7f4dc;
   font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(1.2rem, 2.3cqw, 1.8rem);
@@ -808,16 +830,10 @@ span {
 }
 
 .fight-hud-name-left {
-  grid-column: 2;
-  grid-row: 2;
-  padding-top: 6px;
   text-align: left;
 }
 
 .fight-hud-name-right {
-  grid-column: 1;
-  grid-row: 2;
-  padding-top: 6px;
   text-align: right;
 }
 
@@ -839,10 +855,25 @@ span {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
+.fight-hud-round-label {
+  color: #ffd53a;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1rem, 2.2cqw, 1.9rem);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+    -2px -2px 0 rgba(6, 10, 18, 0.9),
+    2px -2px 0 rgba(6, 10, 18, 0.9),
+    -2px 2px 0 rgba(6, 10, 18, 0.9),
+    2px 2px 0 rgba(6, 10, 18, 0.9);
+}
+
 .fight-hud-rounds {
   display: flex;
   align-items: center;
   gap: clamp(4px, 0.6cqw, 8px);
+  flex: 0 0 auto;
 }
 
 .fight-hud-round-dot {
@@ -1163,6 +1194,12 @@ span {
   gap: 10px;
 }
 
+.fight-control-stack {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
 .fight-control-button {
   position: relative;
   display: inline-flex;
@@ -1207,6 +1244,32 @@ span {
   -webkit-tap-highlight-color: transparent;
 }
 
+.fight-control-button-face {
+  position: relative;
+  z-index: 1;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.fight-control-button-cooling {
+  color: rgba(244, 243, 232, 0.72);
+  cursor: default;
+}
+
+.fight-control-button-cooldown-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    rgba(4, 8, 14, 0.82) 0turn calc(var(--cooldown-ratio) * 1turn),
+    rgba(4, 8, 14, 0.08) calc(var(--cooldown-ratio) * 1turn) 1turn
+  );
+  z-index: 0;
+  pointer-events: none;
+}
+
 .fight-control-button-active {
   transform: scale(0.95);
   background:
@@ -1225,6 +1288,25 @@ span {
   box-shadow:
     inset 0 0 0 3px rgba(214, 255, 238, 0.2),
     0 0 0 3px rgba(14, 45, 33, 0.42);
+}
+
+.fight-control-cooldown-label {
+  min-height: 1em;
+  color: rgba(214, 226, 244, 0.72);
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(0.72rem, 1.2cqw, 0.92rem);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow:
+    -1px -1px 0 rgba(8, 12, 20, 0.88),
+    1px -1px 0 rgba(8, 12, 20, 0.88),
+    -1px 1px 0 rgba(8, 12, 20, 0.88),
+    1px 1px 0 rgba(8, 12, 20, 0.88);
+}
+
+.fight-control-cooldown-label-active {
+  color: #fff07f;
 }
 
 .fight-loading-overlay {
@@ -1693,6 +1775,10 @@ span {
     font-size: 1.45rem;
   }
 
+  .fight-hud-round-label {
+    font-size: 0.95rem;
+  }
+
   .fight-hud-round-dot {
     width: 12px;
     height: 12px;
@@ -1798,6 +1884,10 @@ span {
     padding: 4px 8px;
     border-width: 2px;
     font-size: 1.3rem;
+  }
+
+  .fight-hud-round-label {
+    font-size: 0.88rem;
   }
 
   .fight-hud-round-dot {

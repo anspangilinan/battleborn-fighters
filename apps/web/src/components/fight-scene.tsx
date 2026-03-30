@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { ArcadeMenuItem } from '@/components/arcade-menu-item';
 import { FightHud } from '@/components/fight-hud';
@@ -15,6 +15,7 @@ import {
   decodeInput,
   encodeInput,
   getDashDurationFrames,
+  getMoveCooldownFrames,
   stepMatch,
   type CharacterDefinition,
   type InputState,
@@ -37,6 +38,13 @@ type ControlInputKey = keyof Pick<
   InputState,
   'up' | 'left' | 'right' | 'punch' | 'kick' | 'special'
 >;
+type AttackInputKey = keyof Pick<InputState, 'punch' | 'kick' | 'special'>;
+type AttackCooldownDisplay = {
+  cooling: boolean;
+  remainingFrames: number;
+  remainingLabel: string;
+  remainingRatio: number;
+};
 
 export interface FightSceneProps {
   mode: FightMode;
@@ -126,6 +134,13 @@ const attackControls: Array<Array<{ key: ControlInputKey; label: string }>> = [
     { key: 'special', label: 'L' },
   ],
 ];
+const attackControlKeys: AttackInputKey[] = ['punch', 'kick', 'special'];
+const zeroAttackCooldownDisplay: AttackCooldownDisplay = {
+  cooling: false,
+  remainingFrames: 0,
+  remainingLabel: '',
+  remainingRatio: 0,
+};
 
 function toAssetSegment(value: string) {
   return value
@@ -163,6 +178,15 @@ async function discoverImageSource(
 function getProjectileSpriteName(sprite: string) {
   const basename = sprite.split('/').at(-1) ?? sprite;
   return basename.replace(/\.[^.]+$/, '');
+}
+
+function formatCooldownLabel(remainingFrames: number) {
+  if (remainingFrames <= 0) {
+    return '';
+  }
+
+  const roundedUpSeconds = Math.ceil((remainingFrames / FPS) * 10) / 10;
+  return `${roundedUpSeconds.toFixed(1)}s`;
 }
 
 function getProjectileAssetSourceCandidates(sprite: string) {
@@ -757,6 +781,7 @@ export function FightScene(props: FightSceneProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreenSupported, setIsFullscreenSupported] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [playerSlot, setPlayerSlot] = useState<1 | 2>(1);
   const [visualInput, setVisualInput] = useState<InputState>(() =>
     cloneInput(),
   );
@@ -769,6 +794,41 @@ export function FightScene(props: FightSceneProps) {
   const fighterDefinition = useMemo(
     () => getFighter(props.fighterId),
     [props.fighterId],
+  );
+  const controlledFighterRuntime = useMemo(
+    () => hudState?.fighters.find((fighter) => fighter.slot === playerSlot) ?? null,
+    [hudState, playerSlot],
+  );
+  const controlledFighterDefinition = useMemo(
+    () =>
+      controlledFighterRuntime
+        ? roster[controlledFighterRuntime.fighterId]
+        : fighterDefinition,
+    [controlledFighterRuntime, fighterDefinition],
+  );
+  const attackCooldowns = useMemo(
+    () =>
+      Object.fromEntries(
+        attackControlKeys.map((key) => {
+          const move = controlledFighterDefinition.moves[key];
+          const totalCooldownFrames = move ? getMoveCooldownFrames(move) : 0;
+          const remainingFrames = move
+            ? controlledFighterRuntime?.moveCooldownFrames[move.id] ?? 0
+            : 0;
+          const cooldownDisplay: AttackCooldownDisplay = {
+            cooling: remainingFrames > 0,
+            remainingFrames,
+            remainingLabel: formatCooldownLabel(remainingFrames),
+            remainingRatio:
+              totalCooldownFrames > 0
+                ? Math.min(1, remainingFrames / totalCooldownFrames)
+                : 0,
+          };
+
+          return [key, cooldownDisplay];
+        }),
+      ) as Record<AttackInputKey, AttackCooldownDisplay>,
+    [controlledFighterDefinition, controlledFighterRuntime],
   );
 
   const syncVisualInput = () => {
@@ -877,6 +937,7 @@ export function FightScene(props: FightSceneProps) {
     setFighterAssetManifests({});
     isPausedRef.current = false;
     setIsPaused(false);
+    setPlayerSlot(1);
     clearInputs();
     hasReportedResult.current = false;
     let destroyed = false;
@@ -1270,6 +1331,7 @@ export function FightScene(props: FightSceneProps) {
                   `Room ${message.roomCode} · connected ${message.connectedSlots.length}/2`,
                 );
               } else if (message.type === 'info') {
+                setPlayerSlot(message.slot);
                 setConnectionState(message.message);
               }
             });
@@ -1735,7 +1797,9 @@ export function FightScene(props: FightSceneProps) {
                       setInputSourceValue('pointer', control.key, false)
                     }
                   >
-                    {control.label}
+                    <span className="fight-control-button-face">
+                      {control.label}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1747,29 +1811,67 @@ export function FightScene(props: FightSceneProps) {
                 key={`attack-${rowIndex}`}
                 className="fight-controls-row"
               >
-                {row.map((control) => (
-                  <button
-                    key={control.key}
-                    type="button"
-                    className={`fight-control-button${visualInput[control.key] ? ' fight-control-button-active' : ''}`}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      focusMatch();
-                      setInputSourceValue('pointer', control.key, true);
-                    }}
-                    onPointerUp={() =>
-                      setInputSourceValue('pointer', control.key, false)
-                    }
-                    onPointerLeave={() =>
-                      setInputSourceValue('pointer', control.key, false)
-                    }
-                    onPointerCancel={() =>
-                      setInputSourceValue('pointer', control.key, false)
-                    }
-                  >
-                    {control.label}
-                  </button>
-                ))}
+                {row.map((control) => {
+                  const cooldown = attackCooldowns[control.key as AttackInputKey] ??
+                    zeroAttackCooldownDisplay;
+                  const coolingClass = cooldown.cooling
+                    ? ' fight-control-button-cooling'
+                    : '';
+                  const activeClass = visualInput[control.key]
+                    ? ' fight-control-button-active'
+                    : '';
+                  const cooldownStyle = cooldown.cooling
+                    ? ({ '--cooldown-ratio': `${cooldown.remainingRatio}` } as CSSProperties)
+                    : undefined;
+
+                  return (
+                    <div
+                      key={control.key}
+                      className="fight-control-stack"
+                    >
+                      <button
+                        type="button"
+                        className={`fight-control-button${activeClass}${coolingClass}`}
+                        aria-disabled={cooldown.cooling}
+                        style={cooldownStyle}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          focusMatch();
+                          if (cooldown.cooling) {
+                            setInputSourceValue('pointer', control.key, false);
+                            return;
+                          }
+
+                          setInputSourceValue('pointer', control.key, true);
+                        }}
+                        onPointerUp={() =>
+                          setInputSourceValue('pointer', control.key, false)
+                        }
+                        onPointerLeave={() =>
+                          setInputSourceValue('pointer', control.key, false)
+                        }
+                        onPointerCancel={() =>
+                          setInputSourceValue('pointer', control.key, false)
+                        }
+                      >
+                        <span className="fight-control-button-face">
+                          {control.label}
+                        </span>
+                        {cooldown.cooling ? (
+                          <span
+                            className="fight-control-button-cooldown-sweep"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </button>
+                      <span
+                        className={`fight-control-cooldown-label${cooldown.cooling ? ' fight-control-cooldown-label-active' : ''}`}
+                      >
+                        {cooldown.remainingLabel}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>

@@ -39,6 +39,7 @@ export interface MoveDefinition {
   startup: number;
   active: number;
   recovery: number;
+  cooldownSeconds?: number;
   rootVelocityX?: number;
   jumpCancelable?: boolean;
   projectile?: ProjectileDefinition;
@@ -114,6 +115,7 @@ export interface FighterRuntimeState {
   wins: number;
   ready: boolean;
   meter: number;
+  moveCooldownFrames: Record<string, number>;
   lastInput: InputState;
 }
 

@@ -45,6 +45,7 @@ const morana: CharacterDefinition = {
       startup: 3,
       active: 1,
       recovery: 9,
+      cooldownSeconds: 1.2,
       projectile: {
         sprite: 'morana/iceball',
         tier: 2,
@@ -73,6 +74,7 @@ const morana: CharacterDefinition = {
       startup: 5,
       active: 3,
       recovery: 12,
+      cooldownSeconds: 0.9,
       frameBoxes: {
         5: {
           hitboxes: [
@@ -97,6 +99,7 @@ const morana: CharacterDefinition = {
       startup: 8,
       active: 5,
       recovery: 14,
+      cooldownSeconds: 1.6,
       rootVelocityX: 4,
       frameBoxes: {
         8: {
@@ -160,14 +163,15 @@ const mcbalut: CharacterDefinition = {
       startup: 5,
       active: 1,
       recovery: 11,
+      cooldownSeconds: 1,
       projectile: {
         sprite: 'mcbalut/crossbow-bolt',
         tier: 1,
-        offsetX: 22,
-        offsetY: -84,
+        offsetX: 42,
+        offsetY: -60,
         speed: 17.75,
         minimumDistanceRatio: 0.55,
-        apexHeight: 56,
+        apexHeight: 42,
         landing: 'floor',
         hitbox: hitbox({
           x: -18,
@@ -187,6 +191,7 @@ const mcbalut: CharacterDefinition = {
       startup: 6,
       active: 3,
       recovery: 12,
+      cooldownSeconds: 0.9,
       frameBoxes: {
         6: {
           hitboxes: [
@@ -211,6 +216,7 @@ const mcbalut: CharacterDefinition = {
       startup: 8,
       active: 5,
       recovery: 15,
+      cooldownSeconds: 1.6,
       rootVelocityX: 4.4,
       frameBoxes: {
         8: {
@@ -274,6 +280,7 @@ const digv: CharacterDefinition = {
       startup: 4,
       active: 2,
       recovery: 10,
+      cooldownSeconds: 0.6,
       frameBoxes: {
         4: {
           hitboxes: [
@@ -297,6 +304,7 @@ const digv: CharacterDefinition = {
       startup: 6,
       active: 3,
       recovery: 12,
+      cooldownSeconds: 0.9,
       frameBoxes: {
         6: {
           hitboxes: [
@@ -321,6 +329,7 @@ const digv: CharacterDefinition = {
       startup: 8,
       active: 5,
       recovery: 15,
+      cooldownSeconds: 1.5,
       rootVelocityX: 4.4,
       frameBoxes: {
         8: {
@@ -384,6 +393,7 @@ const paraktaktak: CharacterDefinition = {
       startup: 4,
       active: 2,
       recovery: 10,
+      cooldownSeconds: 0.55,
       frameBoxes: {
         4: {
           hitboxes: [
@@ -407,6 +417,7 @@ const paraktaktak: CharacterDefinition = {
       startup: 6,
       active: 3,
       recovery: 12,
+      cooldownSeconds: 0.85,
       frameBoxes: {
         6: {
           hitboxes: [
@@ -431,6 +442,7 @@ const paraktaktak: CharacterDefinition = {
       startup: 8,
       active: 5,
       recovery: 15,
+      cooldownSeconds: 1.45,
       rootVelocityX: 4.6,
       frameBoxes: {
         8: {
@@ -494,6 +506,7 @@ const quaneshalatonya: CharacterDefinition = {
       startup: 3,
       active: 2,
       recovery: 9,
+      cooldownSeconds: 0.5,
       frameBoxes: {
         3: {
           hitboxes: [
@@ -517,6 +530,7 @@ const quaneshalatonya: CharacterDefinition = {
       startup: 5,
       active: 3,
       recovery: 11,
+      cooldownSeconds: 0.85,
       frameBoxes: {
         5: {
           hitboxes: [
@@ -541,6 +555,7 @@ const quaneshalatonya: CharacterDefinition = {
       startup: 8,
       active: 5,
       recovery: 14,
+      cooldownSeconds: 1.4,
       rootVelocityX: 4.9,
       frameBoxes: {
         8: {

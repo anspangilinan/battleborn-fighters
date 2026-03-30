@@ -21,12 +21,27 @@ type FightHudRoundsProps = {
   side: "left" | "right";
 };
 
+function FightHudRounds({ wins, side }: FightHudRoundsProps) {
+  return (
+    <div className={`fight-hud-rounds fight-hud-rounds-${side}`}>
+      {Array.from({ length: DEFAULT_CONFIG.roundsToWin }).map((_, index) => (
+        <span
+          key={`${side}-round-${index}`}
+          className={`fight-hud-round-dot${wins > index ? " fight-hud-round-dot-filled" : ""}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 function FightHudSlot({ fighter, headshotSource, side }: FightHudSlotProps) {
   const maxHealth = fighterRoster[fighter.fighterId].stats.maxHealth;
   const healthRatio = Math.max(0, Math.min(1, fighter.health / maxHealth));
   const previousRatioRef = useRef(healthRatio);
   const damageFlashTimeoutRef = useRef<number | null>(null);
   const [isTakingDamage, setIsTakingDamage] = useState(false);
+  const nameNode = <div className={`fight-hud-name fight-hud-name-${side}`}>{fighter.name}</div>;
+  const roundNode = <FightHudRounds wins={fighter.wins} side={side} />;
 
   useEffect(() => {
     if (healthRatio < previousRatioRef.current) {
@@ -70,20 +85,19 @@ function FightHudSlot({ fighter, headshotSource, side }: FightHudSlotProps) {
           style={{ width: `${healthRatio * 100}%` }}
         />
       </div>
-      <div className={`fight-hud-name fight-hud-name-${side}`}>{fighter.name}</div>
-    </div>
-  );
-}
-
-function FightHudRounds({ wins, side }: FightHudRoundsProps) {
-  return (
-    <div className={`fight-hud-rounds fight-hud-rounds-${side}`}>
-      {Array.from({ length: DEFAULT_CONFIG.roundsToWin }).map((_, index) => (
-        <span
-          key={`${side}-round-${index}`}
-          className={`fight-hud-round-dot${wins > index ? " fight-hud-round-dot-filled" : ""}`}
-        />
-      ))}
+      <div className={`fight-hud-meta fight-hud-meta-${side}`}>
+        {side === "left" ? (
+          <>
+            {nameNode}
+            {roundNode}
+          </>
+        ) : (
+          <>
+            {roundNode}
+            {nameNode}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -101,9 +115,8 @@ export function FightHud({ state, headshots }: FightHudProps) {
     <div className="fight-hud-shell" aria-hidden="true">
       <FightHudSlot fighter={leftFighter} headshotSource={headshots[leftFighter.fighterId]} side="left" />
       <div className="fight-hud-center">
-        <FightHudRounds wins={leftFighter.wins} side="left" />
         <div className="fight-hud-timer">{timerLabel}</div>
-        <FightHudRounds wins={rightFighter.wins} side="right" />
+        <div className="fight-hud-round-label">Round {state.round}</div>
       </div>
       <FightHudSlot fighter={rightFighter} headshotSource={headshots[rightFighter.fighterId]} side="right" />
     </div>

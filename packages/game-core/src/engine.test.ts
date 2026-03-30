@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, getDashDurationFrames, stepMatch } from "./engine";
+import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, stepMatch } from "./engine";
 import type { CharacterDefinition } from "./types";
 
 const fighter: CharacterDefinition = {
@@ -181,6 +181,19 @@ const cappedProjectileFighter: CharacterDefinition = {
   },
 };
 
+const cooldownFighter: CharacterDefinition = {
+  ...fighter,
+  id: "cooldown-fighter",
+  name: "Cooldown Fighter",
+  moves: {
+    ...fighter.moves,
+    punch: {
+      ...fighter.moves.punch,
+      cooldownSeconds: 0.5,
+    },
+  },
+};
+
 test("input encoding round-trips", () => {
   const mask = encodeInput({ left: true, right: false, up: true, punch: true, kick: false, special: true });
   assert.deepEqual(decodeInput(mask), { left: true, right: false, up: true, punch: true, kick: false, special: true });
@@ -204,6 +217,58 @@ test("fighters take damage when an attack overlaps hurtboxes", () => {
 
   assert.equal(state.fighters[1].health, 950);
   assert.ok(state.events.some((entry) => entry.includes("landed Punch")));
+});
+
+test("move cooldowns block attacks until the configured frames expire", () => {
+  const roster = {
+    [cooldownFighter.id]: cooldownFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, cooldownFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  const expectedCooldownFrames = getMoveCooldownFrames(cooldownFighter.moves.punch);
+  assert.equal(state.fighters[0].attackId, "punch");
+  assert.equal(state.fighters[0].moveCooldownFrames.punch, expectedCooldownFrames);
+
+  for (let index = 0; index < 12 && state.fighters[0].attackId; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].attackId, null);
+  assert.ok(state.fighters[0].moveCooldownFrames.punch > 0);
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  assert.equal(state.fighters[0].attackId, null);
+
+  for (let index = 0; index < expectedCooldownFrames && state.fighters[0].moveCooldownFrames.punch > 0; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].moveCooldownFrames.punch, 0);
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  assert.equal(state.fighters[0].attackId, "punch");
 });
 
 test("fighters can dash with a quick double tap", () => {

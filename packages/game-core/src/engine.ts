@@ -117,6 +117,9 @@ function createFighterState(
     wins: 0,
     ready: false,
     meter: 0,
+    moveCooldownFrames: Object.fromEntries(
+      Object.keys(definition.moves).map((moveId) => [moveId, 0]),
+    ),
     lastInput: cloneInput(),
   };
 }
@@ -200,6 +203,7 @@ function updateFighter(
   config: MatchConfig,
 ) {
   fighter.lastTapFrame = Math.min(fighter.lastTapFrame + 1, DASH_TAP_WINDOW_FRAMES + 1);
+  tickMoveCooldowns(fighter, definition);
 
   if (fighter.health <= 0) {
     cancelDash(fighter);
@@ -253,11 +257,14 @@ function updateFighter(
 }
 
 function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDefinition, input: InputState) {
-  const move = input.special
+  const pressedSpecial = input.special && !fighter.lastInput.special;
+  const pressedKick = input.kick && !fighter.lastInput.kick;
+  const pressedPunch = input.punch && !fighter.lastInput.punch;
+  const move = pressedSpecial
     ? definition.moves.special
-    : input.kick
+    : pressedKick
       ? definition.moves.kick
-      : input.punch
+      : pressedPunch
         ? definition.moves.punch
         : null;
 
@@ -265,21 +272,33 @@ function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDef
     return;
   }
 
-  const justPressed =
-    (input.special && !fighter.lastInput.special) ||
-    (input.kick && !fighter.lastInput.kick) ||
-    (input.punch && !fighter.lastInput.punch);
-
-  if (!justPressed) {
+  if ((fighter.moveCooldownFrames[move.id] ?? 0) > 0) {
     return;
   }
 
   fighter.attackId = move.id;
   fighter.attackFrame = 0;
   fighter.attackConnected = false;
+  fighter.moveCooldownFrames[move.id] = getMoveCooldownFrames(move);
   cancelDash(fighter);
   fighter.action = "attack";
   fighter.vx = (move.rootVelocityX ?? 0) * fighter.facing;
+}
+
+function tickMoveCooldowns(
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+) {
+  for (const moveId of Object.keys(definition.moves)) {
+    const framesRemaining = fighter.moveCooldownFrames[moveId] ?? 0;
+    fighter.moveCooldownFrames[moveId] = Math.max(0, framesRemaining - 1);
+  }
+}
+
+export function getMoveCooldownFrames(
+  move: Pick<NonNullable<CharacterDefinition["moves"][string]>, "cooldownSeconds">,
+) {
+  return Math.max(0, Math.round((move.cooldownSeconds ?? 0) * FPS));
 }
 
 function advanceAttack(
