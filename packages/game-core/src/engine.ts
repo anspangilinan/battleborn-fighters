@@ -649,13 +649,12 @@ function resolveHits(
   }
 
   const hitboxes = getMoveFrameHitboxes(move, attacker.attackFrame);
-  const meleeRangeOffset = getMeleeHitboxRangeOffset(move, hitboxes);
   const hurtboxes = getHurtboxes(defender, defenderDef);
 
   for (const hitbox of hitboxes) {
     const worldHitbox = toWorldBox(
       attacker,
-      offsetBoxX(hitbox, meleeRangeOffset),
+      applyMeleeRangeToHitbox(move, hitbox),
     );
     const collision = hurtboxes.some((hurtbox) => intersects(worldHitbox, hurtbox));
     if (!collision) {
@@ -700,9 +699,8 @@ function resolveAttackProjectileClashes(
     return;
   }
 
-  const meleeRangeOffset = getMeleeHitboxRangeOffset(move, hitboxes);
   const attackHitboxes = hitboxes.map((hitbox) =>
-    toWorldBox(attacker, offsetBoxX(hitbox, meleeRangeOffset))
+    toWorldBox(attacker, applyMeleeRangeToHitbox(move, hitbox))
   );
   const destroyedProjectileIds = new Set<number>();
 
@@ -836,26 +834,25 @@ function getMoveFrameHitboxes(
   return move.frameBoxes?.[attackFrame]?.hitboxes ?? [];
 }
 
-function getMeleeHitboxRangeOffset(
+function applyMeleeRangeToHitbox<T extends Box>(
   move: NonNullable<CharacterDefinition["moves"][string]>,
-  hitboxes: Box[],
+  box: T,
 ) {
-  if (move.projectile || move.meleeRange == null || hitboxes.length === 0) {
-    return 0;
+  if (move.projectile || move.meleeRange == null) {
+    return box;
   }
 
-  const baseRange = Math.max(...hitboxes.map((hitbox) => hitbox.x + hitbox.width));
-  return move.meleeRange - baseRange;
-}
-
-function offsetBoxX<T extends Box>(box: T, xOffset: number): T {
-  if (xOffset === 0) {
-    return box;
+  if (move.meleeRange <= box.x) {
+    return {
+      ...box,
+      x: move.meleeRange - 1,
+      width: 1,
+    };
   }
 
   return {
     ...box,
-    x: box.x + xOffset,
+    width: move.meleeRange - box.x,
   };
 }
 

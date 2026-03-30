@@ -273,6 +273,29 @@ test("configured melee range extends attack reach", () => {
   assert.ok(rangedState.events.some((entry) => entry.includes("landed Punch")));
 });
 
+test("configured melee range keeps point-blank melee hits active", () => {
+  const roster = {
+    [extendedRangeFighter.id]: extendedRangeFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, extendedRangeFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 420;
+  state.fighters[1].x = 444;
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 50);
+  assert.ok(state.events.some((entry) => entry.includes("landed Punch")));
+});
+
 test("move cooldowns block attacks until the configured frames expire", () => {
   const roster = {
     [cooldownFighter.id]: cooldownFighter,
