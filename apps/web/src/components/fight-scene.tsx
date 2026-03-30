@@ -557,7 +557,11 @@ function getProjectileSpriteScale(
   projectile: MatchState['projectiles'][number],
   sourceImage: { width: number; height: number },
 ) {
-  if (getProjectileSpriteName(projectile.sprite) === 'iceball') {
+  const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  if (
+    projectileSpriteName === 'iceball' ||
+    projectileSpriteName === 'fireball'
+  ) {
     return Math.max(
       (projectile.hitbox.width * 1.5) / sourceImage.width,
       (projectile.hitbox.height * 1.5) / sourceImage.height,
@@ -570,12 +574,75 @@ function getProjectileSpriteScale(
   );
 }
 
-function getProjectileTrailAlphas(projectile: MatchState['projectiles'][number]) {
-  if (getProjectileSpriteName(projectile.sprite) === 'iceball') {
-    return [0.42, 0.28, 0.18, 0.1];
+function getProjectileTrailScales(projectile: MatchState['projectiles'][number]) {
+  const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  if (projectileSpriteName === 'iceball') {
+    return [0.84, 0.68, 0.54, 0.42];
+  }
+
+  if (projectileSpriteName === 'fireball') {
+    return [0.82, 0.66, 0.5, 0.36];
   }
 
   return [];
+}
+
+function getProjectileTrailAlphas(projectile: MatchState['projectiles'][number]) {
+  const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  if (projectileSpriteName === 'iceball') {
+    return [0.4, 0.26, 0.16, 0.08];
+  }
+
+  if (projectileSpriteName === 'fireball') {
+    return [0.38, 0.24, 0.14, 0.07];
+  }
+
+  return [];
+}
+
+function getProjectileTrailZigZagOffsets(
+  projectile: MatchState['projectiles'][number],
+) {
+  const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  if (projectileSpriteName === 'iceball') {
+    return [-7, 6, -5, 4];
+  }
+
+  if (projectileSpriteName === 'fireball') {
+    return [6, -5, 4, -3];
+  }
+
+  return [];
+}
+
+function getProjectileTrailJiggleAmplitude(
+  projectile: MatchState['projectiles'][number],
+) {
+  const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  if (projectileSpriteName === 'iceball') {
+    return 2.6;
+  }
+
+  if (projectileSpriteName === 'fireball') {
+    return 2.1;
+  }
+
+  return 0;
+}
+
+function getProjectileTrailJiggleSpeed(
+  projectile: MatchState['projectiles'][number],
+) {
+  const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  if (projectileSpriteName === 'iceball') {
+    return 12;
+  }
+
+  if (projectileSpriteName === 'fireball') {
+    return 10;
+  }
+
+  return 0;
 }
 
 function getFullscreenElement(currentDocument: FullscreenCapableDocument) {
@@ -1229,6 +1296,10 @@ export function FightScene(props: FightSceneProps) {
           scale: number,
         ) {
           const trailAlphas = getProjectileTrailAlphas(projectile);
+          const trailScales = getProjectileTrailScales(projectile);
+          const trailZigZagOffsets = getProjectileTrailZigZagOffsets(projectile);
+          const jiggleAmplitude = getProjectileTrailJiggleAmplitude(projectile);
+          const jiggleSpeed = getProjectileTrailJiggleSpeed(projectile);
           const existingTrailSprites =
             this.projectileTrailSprites.get(projectile.id) ?? [];
 
@@ -1243,24 +1314,38 @@ export function FightScene(props: FightSceneProps) {
             velocityMagnitude > 0.001 ? projectile.vx / velocityMagnitude : projectile.facing;
           const directionY =
             velocityMagnitude > 0.001 ? projectile.vy / velocityMagnitude : 0;
+          const perpendicularX = -directionY;
+          const perpendicularY = directionX;
           const spacing = Math.max(projectile.hitbox.width * 0.6, 14);
           const rotation = Math.atan2(projectile.vy, projectile.vx);
+          const timeSeconds = this.time.now / 1000;
           const nextTrailSprites = trailAlphas.map((alpha, index) => {
             const trailSprite =
               existingTrailSprites[index] ??
               this.add.image(projectile.x, projectile.y, textureKey);
             const offset = spacing * (index + 1);
+            const zigZagOffset = trailZigZagOffsets[index] ?? 0;
+            const trailScale = trailScales[index] ?? Math.max(0.35, 1 - (index + 1) * 0.14);
+            const jiggleOffset =
+              jiggleAmplitude > 0
+                ? Math.sin(
+                    timeSeconds * jiggleSpeed + projectile.id * 0.35 + index * 1.25,
+                  ) *
+                  jiggleAmplitude *
+                  Math.max(0.45, 1 - index * 0.16)
+                : 0;
+            const perpendicularOffset = zigZagOffset + jiggleOffset;
 
             trailSprite.setTexture(textureKey);
             trailSprite.setVisible(true);
             trailSprite.setDepth(3.9 - index * 0.01);
             trailSprite.setOrigin(0.5, 0.5);
             trailSprite.setPosition(
-              projectile.x - directionX * offset,
-              projectile.y - directionY * offset,
+              projectile.x - directionX * offset + perpendicularX * perpendicularOffset,
+              projectile.y - directionY * offset + perpendicularY * perpendicularOffset,
             );
             trailSprite.setRotation(rotation);
-            trailSprite.setScale(scale * (1 - index * 0.08));
+            trailSprite.setScale(scale * trailScale);
             trailSprite.setAlpha(alpha);
             return trailSprite;
           });
