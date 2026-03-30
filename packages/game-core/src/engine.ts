@@ -12,7 +12,6 @@ import type {
 
 export const FPS = 60;
 const DASH_TAP_WINDOW_FRAMES = 10;
-const DASH_DURATION_FRAMES = 8;
 
 export const DEFAULT_CONFIG: MatchConfig = {
   width: 960,
@@ -217,7 +216,7 @@ function updateFighter(
   }
 
   if (!fighter.grounded) {
-    fighter.vy += definition.stats.gravity;
+    fighter.vy += definition.stats.movement.gravity;
   }
 
   fighter.x += fighter.vx;
@@ -232,7 +231,7 @@ function updateFighter(
     }
   } else {
     fighter.grounded = false;
-    if (!fighter.attackId && fighter.hitstun === 0) {
+    if (!fighter.attackId && fighter.hitstun === 0 && fighter.action !== "dash") {
       fighter.action = "jump";
     }
   }
@@ -297,23 +296,20 @@ function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDef
 
   if (fighter.grounded && input.up && !fighter.lastInput.up) {
     cancelDash(fighter);
-    fighter.vy = -definition.stats.jumpVelocity;
+    fighter.vy = -definition.stats.movement.jumpVelocity;
     fighter.grounded = false;
-    fighter.action = "jump";
-    return;
-  }
-
-  if (!fighter.grounded) {
     fighter.action = "jump";
     return;
   }
 
   const tappedLeft = input.left && !fighter.lastInput.left && !input.right;
   const tappedRight = input.right && !fighter.lastInput.right && !input.left;
-  if (tappedLeft) {
-    registerDashTap(fighter, -1);
-  } else if (tappedRight) {
-    registerDashTap(fighter, 1);
+  if (fighter.grounded) {
+    if (tappedLeft) {
+      registerDashTap(fighter, definition, -1);
+    } else if (tappedRight) {
+      registerDashTap(fighter, definition, 1);
+    }
   }
 
   if (fighter.dashFramesRemaining > 0) {
@@ -326,7 +322,15 @@ function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDef
     return;
   }
 
-  fighter.vx = direction * definition.stats.walkSpeed;
+  if (!fighter.grounded) {
+    if (fighter.action === "dash") {
+      fighter.vx = 0;
+    }
+    fighter.action = "jump";
+    return;
+  }
+
+  fighter.vx = direction * definition.stats.movement.walkSpeed;
   if (direction !== 0) {
     fighter.action = "walk";
   } else {
@@ -335,12 +339,12 @@ function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDef
   }
 }
 
-function registerDashTap(fighter: FighterRuntimeState, direction: Facing) {
+function registerDashTap(fighter: FighterRuntimeState, definition: CharacterDefinition, direction: Facing) {
   const withinWindow = fighter.lastTapDirection === direction && fighter.lastTapFrame <= DASH_TAP_WINDOW_FRAMES;
 
   if (withinWindow) {
     fighter.dashDirection = direction;
-    fighter.dashFramesRemaining = DASH_DURATION_FRAMES;
+    fighter.dashFramesRemaining = getDashDurationFrames(definition);
     fighter.lastTapDirection = 0;
     fighter.lastTapFrame = DASH_TAP_WINDOW_FRAMES + 1;
     return;
@@ -356,7 +360,17 @@ function cancelDash(fighter: FighterRuntimeState) {
 }
 
 function getDashSpeed(definition: CharacterDefinition) {
-  return definition.stats.dashDistance / DASH_DURATION_FRAMES;
+  return definition.stats.movement.dash.speed;
+}
+
+export function getDashDurationFrames(definition: CharacterDefinition) {
+  return Math.max(
+    1,
+    Math.round(
+      definition.stats.movement.dash.distance /
+        definition.stats.movement.dash.speed,
+    ),
+  );
 }
 
 function resolvePushboxes(

@@ -19,10 +19,16 @@ const morana: CharacterDefinition = {
   },
   stats: {
     maxHealth: 1000,
-    walkSpeed: 5.5,
-    dashDistance: 92.4,
-    jumpVelocity: 18,
-    gravity: 1.1,
+    movement: {
+      walkSpeed: 5.5,
+      jumpVelocity: 18,
+      gravity: 1.1,
+      dash: {
+        distance: 92.4,
+        speed: 8.55,
+        lift: 8.2,
+      },
+    },
     pushWidth: 24,
   },
   standingBoxes: {
@@ -123,10 +129,16 @@ const mcbalut: CharacterDefinition = {
   },
   stats: {
     maxHealth: 1020,
-    walkSpeed: 3,
-    dashDistance: 108,
-    jumpVelocity: 17,
-    gravity: 1.08,
+    movement: {
+      walkSpeed: 3,
+      jumpVelocity: 17,
+      gravity: 1.08,
+      dash: {
+        distance: 108,
+        speed: 13.5,
+        lift: 3.4,
+      },
+    },
     pushWidth: 24,
   },
   standingBoxes: {
@@ -227,10 +239,16 @@ const digv: CharacterDefinition = {
   },
   stats: {
     maxHealth: 1010,
-    walkSpeed: 2.8,
-    dashDistance: 84.04,
-    jumpVelocity: 17,
-    gravity: 1.08,
+    movement: {
+      walkSpeed: 2.8,
+      jumpVelocity: 17,
+      gravity: 1.08,
+      dash: {
+        distance: 108.04,
+        speed: 5.505,
+        lift: 8.1,
+      },
+    },
     pushWidth: 24,
   },
   standingBoxes: {
@@ -331,10 +349,16 @@ const paraktaktak: CharacterDefinition = {
   },
   stats: {
     maxHealth: 1030,
-    walkSpeed: 3.1,
-    dashDistance: 93,
-    jumpVelocity: 17,
-    gravity: 1.08,
+    movement: {
+      walkSpeed: 3.1,
+      jumpVelocity: 17,
+      gravity: 1.08,
+      dash: {
+        distance: 93,
+        speed: 11.625,
+        lift: 4.8,
+      },
+    },
     pushWidth: 24,
   },
   standingBoxes: {

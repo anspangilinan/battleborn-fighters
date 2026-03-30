@@ -35,10 +35,16 @@ export const characterSchema = z.object({
   }),
   stats: z.object({
     maxHealth: z.number().int().positive(),
-    walkSpeed: z.number().positive(),
-    dashDistance: z.number().positive(),
-    jumpVelocity: z.number().positive(),
-    gravity: z.number().positive(),
+    movement: z.object({
+      walkSpeed: z.number().positive(),
+      jumpVelocity: z.number().positive(),
+      gravity: z.number().positive(),
+      dash: z.object({
+        distance: z.number().positive(),
+        speed: z.number().positive(),
+        lift: z.number().nonnegative(),
+      }),
+    }),
     pushWidth: z.number().positive(),
   }),
   standingBoxes: z.object({

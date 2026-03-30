@@ -55,10 +55,16 @@ export interface CharacterDefinition {
   };
   stats: {
     maxHealth: number;
-    walkSpeed: number;
-    dashDistance: number;
-    jumpVelocity: number;
-    gravity: number;
+    movement: {
+      walkSpeed: number;
+      jumpVelocity: number;
+      gravity: number;
+      dash: {
+        distance: number;
+        speed: number;
+        lift: number;
+      };
+    };
     pushWidth: number;
   };
   sprites: {

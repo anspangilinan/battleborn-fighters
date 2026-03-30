@@ -72,11 +72,13 @@ Each hitbox includes:
 3. Add a portrait file under [apps/web/public/characters](/home/dev/Projects/battleborn/battleborn-fighters/apps/web/public/characters).
 4. Add the raw stance reference image under [docs/character-reference](/home/dev/Projects/battleborn/battleborn-fighters/docs/character-reference).
 5. Tune movement stats:
-   - `walkSpeed`
-   - `jumpVelocity`
-   - `gravity`
+   - `movement.walkSpeed`
+   - `movement.jumpVelocity`
+   - `movement.gravity`
+   - `movement.dash.distance`
+   - `movement.dash.speed`
+   - `movement.dash.lift` for the dash hover look
    - `pushWidth`
-   - dash feel is currently derived from walk speed and the shared engine dash tuning
 6. Replace the standing and jumping hurtboxes.
 7. Define the three starter moves with frame-indexed hitboxes.
 8. Add a link to practice as that fighter on the home screen if you want it featured there.

@@ -14,6 +14,7 @@ import {
   createMatchState,
   decodeInput,
   encodeInput,
+  getDashDurationFrames,
   stepMatch,
   type CharacterDefinition,
   type InputState,
@@ -84,6 +85,16 @@ type FighterAssetManifest = {
   headshotSource: string | null;
   portraitSource: string | null;
   stanceSources: Record<FightAnimationStance, string[]>;
+};
+
+type FullscreenCapableElement = HTMLDivElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenCapableDocument = Document & {
+  webkitExitFullscreen?: () => Promise<void> | void;
+  webkitFullscreenElement?: Element | null;
+  webkitFullscreenEnabled?: boolean;
 };
 
 const phaserModulePromise = import('phaser').then(
@@ -381,11 +392,17 @@ function getAnimationFrameIndex(
       }
 
       return Math.floor(matchFrame / 5) % frameCount;
-    case 'dash':
+    case 'dash': {
+      const dashDurationFrames = getDashDurationFrames(definition);
       return Math.min(
         frameCount - 1,
-        Math.floor(((8 - fighter.dashFramesRemaining) / 8) * frameCount),
+        Math.floor(
+          ((dashDurationFrames - fighter.dashFramesRemaining) /
+            dashDurationFrames) *
+            frameCount,
+        ),
       );
+    }
     case 'hurt':
       return Math.floor(matchFrame / 4) % frameCount;
     case 'ko':
@@ -418,6 +435,43 @@ function getAnimationTextureKey(
   return `${fighterId}:animation:${stance}:${frameIndex}`;
 }
 
+function getFullscreenElement(currentDocument: FullscreenCapableDocument) {
+  return currentDocument.fullscreenElement ?? currentDocument.webkitFullscreenElement ?? null;
+}
+
+async function requestElementFullscreen(element: FullscreenCapableElement) {
+  if (typeof element.requestFullscreen === 'function') {
+    await element.requestFullscreen();
+    return;
+  }
+
+  await element.webkitRequestFullscreen?.();
+}
+
+async function exitElementFullscreen(currentDocument: FullscreenCapableDocument) {
+  if (typeof currentDocument.exitFullscreen === 'function') {
+    await currentDocument.exitFullscreen();
+    return;
+  }
+
+  await currentDocument.webkitExitFullscreen?.();
+}
+
+function getDashVisualLift(
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+) {
+  const { dash } = definition.stats.movement;
+  if (fighter.action !== 'dash' || dash.lift <= 0) {
+    return 0;
+  }
+
+  const dashDurationFrames = getDashDurationFrames(definition);
+  const progress =
+    (dashDurationFrames - fighter.dashFramesRemaining) / dashDurationFrames;
+  return dash.lift * Math.sin(Math.PI * progress);
+}
+
 function createAiInput(state: MatchState): InputState {
   const player = state.fighters[1];
   const target = state.fighters[0];
@@ -444,7 +498,7 @@ function renderFighterFallback(
   const headRadius = 18;
   const torsoHeight = 54;
   const baseX = fighter.x;
-  const baseY = fighter.y;
+  const baseY = fighter.y - getDashVisualLift(fighter, definition);
   const direction = fighter.facing;
 
   graphics.fillStyle(colorToNumber(definition.palette.primary), 1);
@@ -497,6 +551,7 @@ function getCountdownAnnouncement(state: MatchState) {
 }
 
 export function FightScene(props: FightSceneProps) {
+  const screenRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const arenaSceneRef = useRef<any>(null);
   const keyboardInputRef = useRef<InputState>(cloneInput());
@@ -513,6 +568,8 @@ export function FightScene(props: FightSceneProps) {
   const [connectionState, setConnectionState] = useState('Loading');
   const [isSceneBooting, setIsSceneBooting] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [isFullscreenSupported, setIsFullscreenSupported] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [visualInput, setVisualInput] = useState<InputState>(() =>
     cloneInput(),
   );
@@ -587,6 +644,39 @@ export function FightScene(props: FightSceneProps) {
   useEffect(() => {
     focusMatch();
   }, [props.fighterId, props.mode, props.opponentId, props.roomCode]);
+
+  useEffect(() => {
+    const currentDocument = document as FullscreenCapableDocument;
+
+    const syncFullscreenState = () => {
+      const fullscreenCapableScreen = screenRef.current as FullscreenCapableElement | null;
+      setIsFullscreenSupported(
+        Boolean(
+          fullscreenCapableScreen &&
+            (
+              typeof fullscreenCapableScreen.requestFullscreen === 'function' ||
+              typeof fullscreenCapableScreen.webkitRequestFullscreen === 'function'
+            ),
+        ),
+      );
+      setIsFullscreen(getFullscreenElement(currentDocument) === screenRef.current);
+    };
+
+    syncFullscreenState();
+    currentDocument.addEventListener('fullscreenchange', syncFullscreenState);
+    currentDocument.addEventListener(
+      'webkitfullscreenchange',
+      syncFullscreenState as EventListener,
+    );
+
+    return () => {
+      currentDocument.removeEventListener('fullscreenchange', syncFullscreenState);
+      currentDocument.removeEventListener(
+        'webkitfullscreenchange',
+        syncFullscreenState as EventListener,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -1008,12 +1098,13 @@ export function FightScene(props: FightSceneProps) {
               const fighterSprite =
                 existingSprite ??
                 this.add.image(fighter.x, fighter.y + 6, textureKey);
+              const visualLift = getDashVisualLift(fighter, definition);
 
               fighterSprite.setTexture(textureKey);
               fighterSprite.setVisible(true);
               fighterSprite.setDepth(3);
               fighterSprite.setOrigin(0.5, 1);
-              fighterSprite.setPosition(fighter.x, fighter.y + 6);
+              fighterSprite.setPosition(fighter.x, fighter.y + 6 - visualLift);
               fighterSprite.setFlipX(fighter.facing < 0);
               fighterSprite.setScale(spriteScale);
               this.fighterSprites.set(fighter.slot, fighterSprite);
@@ -1097,11 +1188,72 @@ export function FightScene(props: FightSceneProps) {
     ? getCountdownAnnouncement(hudState)
     : null;
 
+  const toggleFullscreen = async () => {
+    const fullscreenCapableScreen = screenRef.current as FullscreenCapableElement | null;
+    if (!fullscreenCapableScreen) {
+      return;
+    }
+
+    const currentDocument = document as FullscreenCapableDocument;
+
+    try {
+      if (getFullscreenElement(currentDocument) === screenRef.current) {
+        await exitElementFullscreen(currentDocument);
+      } else {
+        await requestElementFullscreen(fullscreenCapableScreen);
+      }
+    } catch {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      focusMatch();
+    });
+  };
+
   return (
     <div
+      ref={screenRef}
       className={`fight-screen${isPaused ? ' fight-screen-paused' : ''}`}
       onPointerDown={focusMatch}
     >
+      {!isSceneBooting && isFullscreenSupported ? (
+        <button
+          type="button"
+          className={`fight-fullscreen-toggle${isFullscreen ? ' fight-fullscreen-toggle-active' : ''}`}
+          onClick={() => {
+            void toggleFullscreen();
+          }}
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="fight-fullscreen-toggle-icon"
+          >
+            {isFullscreen ? (
+              <path
+                d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5M8 8l4 4M16 8l-4 4M8 16l4-4M16 16l-4-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : (
+              <path
+                d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5M8 8L4 4M16 8l4-4M8 16l-4 4M16 16l4 4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
+        </button>
+      ) : null}
       <div
         ref={containerRef}
         className="fight-canvas"

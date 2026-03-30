@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, stepMatch } from "./engine";
+import { DEFAULT_CONFIG, EMPTY_INPUT, createMatchState, decodeInput, encodeInput, getDashDurationFrames, stepMatch } from "./engine";
 import type { CharacterDefinition } from "./types";
 
 const fighter: CharacterDefinition = {
@@ -18,10 +18,16 @@ const fighter: CharacterDefinition = {
   },
   stats: {
     maxHealth: 1000,
-    walkSpeed: 5,
-    dashDistance: 80,
-    jumpVelocity: 18,
-    gravity: 1,
+    movement: {
+      walkSpeed: 5,
+      jumpVelocity: 18,
+      gravity: 1,
+      dash: {
+        distance: 80,
+        speed: 10,
+        lift: 0,
+      },
+    },
     pushWidth: 20,
   },
   standingBoxes: {
@@ -125,7 +131,96 @@ test("fighters can dash with a quick double tap", () => {
   );
 
   assert.equal(state.fighters[0].action, "dash");
-  assert.equal(state.fighters[0].vx, -(fighter.stats.dashDistance / 8));
+  assert.equal(state.fighters[0].vx, -fighter.stats.movement.dash.speed);
+  assert.equal(state.fighters[0].dashFramesRemaining, getDashDurationFrames(fighter) - 1);
+  assert.equal(state.fighters[0].grounded, true);
+});
+
+test("dash lift is visual only and keeps fighters grounded", () => {
+  const liftedFighter: CharacterDefinition = {
+    ...fighter,
+    id: "lifted-fighter",
+    stats: {
+      ...fighter.stats,
+      movement: {
+        ...fighter.stats.movement,
+        dash: {
+          ...fighter.stats.movement.dash,
+          lift: 4,
+        },
+      },
+    },
+  };
+  const roster = { [liftedFighter.id]: liftedFighter };
+  let state = createMatchState(roster, liftedFighter.id, liftedFighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(
+    state,
+    roster,
+    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  assert.equal(state.fighters[0].action, "dash");
+  assert.equal(state.fighters[0].grounded, true);
+  assert.equal(state.fighters[0].y, DEFAULT_CONFIG.groundY);
+  assert.equal(state.fighters[0].vy, 0);
+});
+
+test("fighters can jump out of a floating dash if jump is unused", () => {
+  const liftedFighter: CharacterDefinition = {
+    ...fighter,
+    id: "lifted-fighter",
+    stats: {
+      ...fighter.stats,
+      movement: {
+        ...fighter.stats.movement,
+        dash: {
+          ...fighter.stats.movement.dash,
+          lift: 4,
+        },
+      },
+    },
+  };
+  const roster = { [liftedFighter.id]: liftedFighter };
+  let state = createMatchState(roster, liftedFighter.id, liftedFighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+
+  state = stepMatch(
+    state,
+    roster,
+    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(
+    state,
+    roster,
+    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+  state = stepMatch(
+    state,
+    roster,
+    { left: false, right: false, up: true, punch: false, kick: false, special: false },
+    EMPTY_INPUT,
+  );
+
+  assert.equal(state.fighters[0].action, "jump");
+  assert.equal(state.fighters[0].dashFramesRemaining, 0);
+  assert.equal(state.fighters[0].grounded, false);
+  assert.ok(state.fighters[0].y < DEFAULT_CONFIG.groundY);
+  assert.ok(state.fighters[0].vy < 0);
 });
 
 test("fighters can jump over each other and switch facing after crossing", () => {
