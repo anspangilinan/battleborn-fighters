@@ -698,26 +698,173 @@ function getMoveAiRange(move: CharacterDefinition['moves'][string] | undefined) 
   return getMoveMeleeRange(move) + 18 + Math.max(0, (move.rootVelocityX ?? 0) * move.startup);
 }
 
+function isMoveAiReady(
+  fighter: MatchState['fighters'][number],
+  move: CharacterDefinition['moves'][string] | undefined,
+) {
+  if (!move) {
+    return false;
+  }
+
+  return (fighter.moveCooldownFrames[move.id] ?? 0) === 0;
+}
+
+function getProjectileAiBand(
+  move: CharacterDefinition['moves'][string] | undefined,
+) {
+  if (!move?.projectile) {
+    return null;
+  }
+
+  const maxDistance =
+    DEFAULT_CONFIG.width *
+    (move.projectile.maximumDistanceRatio ?? move.projectile.minimumDistanceRatio);
+
+  return {
+    min: Math.max(110, maxDistance * 0.32),
+    max: Math.max(170, maxDistance * 0.86),
+  };
+}
+
+function getAiAttackCadenceFrames(button: 'punch' | 'kick' | 'special') {
+  switch (button) {
+    case 'punch':
+      return 42;
+    case 'kick':
+      return 72;
+    case 'special':
+      return 132;
+    default:
+      return 60;
+  }
+}
+
 function createAiInput(state: MatchState): InputState {
   const player = state.fighters[1];
   const target = state.fighters[0];
   const playerDefinition = roster[player.fighterId];
+  const punchMove = playerDefinition?.moves.punch;
+  const kickMove = playerDefinition?.moves.kick;
+  const specialMove = playerDefinition?.moves.special;
   const punchRange = getMoveAiRange(playerDefinition?.moves.punch);
   const kickRange = getMoveAiRange(playerDefinition?.moves.kick);
   const specialRange = getMoveAiRange(playerDefinition?.moves.special);
-  if (state.status !== 'fighting') {
+  if (
+    state.status !== 'fighting' ||
+    player.attackId ||
+    player.hitstun > 0
+  ) {
     return EMPTY_INPUT;
   }
 
   const distance = target.x - player.x;
-  return {
-    left: distance < -70,
-    right: distance > 70,
-    up: !player.grounded && player.y < target.y - 40,
-    punch: Math.abs(distance) < punchRange && state.frame % 50 === 0,
-    kick: Math.abs(distance) < kickRange && state.frame % 80 === 0,
-    special: Math.abs(distance) < specialRange && state.frame % 160 === 0,
-  };
+  const absoluteDistance = Math.abs(distance);
+  const towardKey = distance < 0 ? 'left' : 'right';
+  const awayKey = distance < 0 ? 'right' : 'left';
+  const punchReady = isMoveAiReady(player, punchMove);
+  const kickReady = isMoveAiReady(player, kickMove);
+  const specialReady = isMoveAiReady(player, specialMove);
+  const projectilePunchBand = getProjectileAiBand(punchMove);
+  const meleePunchRange = punchMove?.projectile ? 0 : punchRange;
+  const closeMeleeRange = Math.max(
+    specialReady ? specialRange : 0,
+    kickReady ? kickRange : 0,
+    punchReady ? meleePunchRange : 0,
+  );
+  const nextInput = cloneInput();
+
+  if (!player.grounded) {
+    const canThrowAerialProjectile =
+      punchReady &&
+      projectilePunchBand &&
+      absoluteDistance >= projectilePunchBand.min * 0.7 &&
+      absoluteDistance <= projectilePunchBand.max;
+    const canLandAerialKick = kickReady && absoluteDistance <= kickRange + 18;
+    const canLandAerialSpecial =
+      specialReady && absoluteDistance <= specialRange + 12;
+    const canLandAerialPunch =
+      punchReady &&
+      !punchMove?.projectile &&
+      absoluteDistance <= punchRange + 14;
+
+    nextInput.special =
+      canLandAerialSpecial &&
+      state.frame % getAiAttackCadenceFrames('special') === 0;
+    nextInput.kick =
+      !nextInput.special &&
+      canLandAerialKick &&
+      state.frame % getAiAttackCadenceFrames('kick') === 0;
+    nextInput.punch =
+      !nextInput.special &&
+      !nextInput.kick &&
+      (canThrowAerialProjectile || canLandAerialPunch) &&
+      state.frame % getAiAttackCadenceFrames('punch') === 0;
+    return nextInput;
+  }
+
+  let moveToward = false;
+  let moveAway = false;
+
+  if (projectilePunchBand && punchReady) {
+    if (absoluteDistance < projectilePunchBand.min && closeMeleeRange === 0) {
+      moveAway = true;
+    } else if (absoluteDistance > projectilePunchBand.max) {
+      moveToward = true;
+    }
+  }
+
+  if (!moveToward && !moveAway && closeMeleeRange > 0) {
+    if (absoluteDistance > closeMeleeRange + 14) {
+      moveToward = true;
+    } else if (
+      projectilePunchBand &&
+      punchReady &&
+      absoluteDistance < Math.max(56, projectilePunchBand.min * 0.8)
+    ) {
+      moveAway = true;
+    }
+  }
+
+  const jumpAttackRange = Math.max(
+    specialReady ? specialRange : 0,
+    kickReady ? kickRange : 0,
+    punchReady ? meleePunchRange : 0,
+  );
+  const shouldJumpAttack =
+    jumpAttackRange > 0 &&
+    absoluteDistance >= Math.max(90, jumpAttackRange * 0.82) &&
+    absoluteDistance <= jumpAttackRange + 30 &&
+    state.frame % 96 === 0;
+
+  nextInput[towardKey] = moveToward && !moveAway;
+  nextInput[awayKey] = moveAway && !moveToward;
+  nextInput.up = shouldJumpAttack;
+
+  nextInput.special =
+    !shouldJumpAttack &&
+    specialReady &&
+    absoluteDistance <= specialRange + 10 &&
+    state.frame % getAiAttackCadenceFrames('special') === 0;
+  nextInput.kick =
+    !shouldJumpAttack &&
+    !nextInput.special &&
+    kickReady &&
+    absoluteDistance <= kickRange + 8 &&
+    state.frame % getAiAttackCadenceFrames('kick') === 0;
+  nextInput.punch =
+    !shouldJumpAttack &&
+    !nextInput.special &&
+    !nextInput.kick &&
+    punchReady &&
+    (
+      projectilePunchBand
+        ? absoluteDistance >= projectilePunchBand.min &&
+          absoluteDistance <= projectilePunchBand.max
+        : absoluteDistance <= punchRange + 8
+    ) &&
+    state.frame % getAiAttackCadenceFrames('punch') === 0;
+
+  return nextInput;
 }
 
 function renderFighterFallback(
