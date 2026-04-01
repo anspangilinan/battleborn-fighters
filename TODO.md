@@ -5,16 +5,12 @@ Missing elements
    - [ ] Splash screen
    - [ ] Versus, Round 1, Round 2, Round 3, Fight, Knockdown, You Win, You Lose, Gameover 
    - [ ] Special move BG
-
 - [ ] Sound design
   - [ ] BGM
   - [ ] Generic combat SFX
-
 - [x] Custom typography
    - [x] For names, controller, text
-
 - [ ] Custom iconography
-
 - [ ] Post-fight dialog and menu
 - [ ] User stats
 - [ ] Online queue
@@ -23,8 +19,8 @@ Missing elements
   - [ ] Parallax support
   - [ ] Random characters as audience
   - [ ] Non playable characters as audience
-- [ ] COMBOS
-
+- [ ] Combo / Combo-breakers
 - [ ] Animations
   - [ ] Back walk
   - [ ] Hurt t2, t3
+- [ ] Defensive options
