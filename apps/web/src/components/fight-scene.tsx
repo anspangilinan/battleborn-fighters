@@ -49,7 +49,7 @@ type AttackCooldownDisplay = {
   remainingLabel: string;
   remainingRatio: number;
 };
-type FightAnnouncementPhase = 'round' | 'fight' | 'ko';
+type FightAnnouncementPhase = 'round' | 'fight' | 'ko' | 'result';
 type FightAnnouncement = {
   eyebrow: string;
   title: string;
@@ -1917,6 +1917,35 @@ function getCountdownAnnouncement(state: MatchState) {
   };
 }
 
+function getRoundResultAnnouncement(
+  state: MatchState | null,
+  playerSlot: 1 | 2,
+): FightAnnouncement | null {
+  if (!state) {
+    return null;
+  }
+
+  if (state.status === 'round-over' && state.roundOverFramesRemaining > 0) {
+    return null;
+  }
+
+  if (state.status !== 'round-over' && state.status !== 'match-over') {
+    return null;
+  }
+
+  const winnerSlot = getRoundWinnerSlot(state);
+  return {
+    eyebrow: '',
+    title:
+      winnerSlot == null
+        ? 'Draw'
+        : winnerSlot === playerSlot
+          ? 'You Win'
+          : 'You Lose',
+    phase: 'result',
+  };
+}
+
 function hasNewKo(previousState: MatchState | null, nextState: MatchState) {
   if (nextState.status !== 'round-over' && nextState.status !== 'match-over') {
     return false;
@@ -2962,7 +2991,11 @@ export function FightScene(props: FightSceneProps) {
   const countdownAnnouncement = hudState
     ? getCountdownAnnouncement(hudState)
     : null;
-  const fightAnnouncement = koAnnouncement ?? countdownAnnouncement;
+  const roundResultAnnouncement = !koAnnouncement
+    ? getRoundResultAnnouncement(hudState, playerSlot)
+    : null;
+  const fightAnnouncement =
+    koAnnouncement ?? countdownAnnouncement ?? roundResultAnnouncement;
 
   const toggleFullscreen = async () => {
     const fullscreenCapableScreen = screenRef.current as FullscreenCapableElement | null;
