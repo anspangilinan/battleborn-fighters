@@ -15,6 +15,7 @@ const stanceOptions = [
   { id: "dash", label: "Dash" },
   { id: "hurt", label: "Hurt" },
   { id: "ko", label: "KO" },
+  { id: "win", label: "Win" },
   { id: "attack1", label: "Attack 1" },
   { id: "attack2", label: "Attack 2" },
   { id: "special", label: "Special" },

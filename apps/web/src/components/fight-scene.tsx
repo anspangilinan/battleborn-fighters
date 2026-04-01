@@ -129,6 +129,7 @@ const fightAnimationStances = [
   'dash',
   'hurt',
   'ko',
+  'win',
   'attack1',
   'attack2',
   'special',
@@ -458,8 +459,13 @@ function queueProjectileTextures(
 }
 
 function getDesiredAnimationStance(
+  state: MatchState,
   fighter: MatchState['fighters'][number],
 ): FightAnimationStance {
+  if (shouldUseWinStance(state, fighter)) {
+    return 'win';
+  }
+
   if (fighter.action === 'attack') {
     if (fighter.attackId === 'kick') {
       return 'attack2';
@@ -499,7 +505,36 @@ function getDesiredAnimationStance(
   return 'idle';
 }
 
+function getRoundWinnerSlot(state: MatchState) {
+  if (state.status === 'match-over') {
+    return state.winner;
+  }
+
+  if (state.status !== 'round-over') {
+    return null;
+  }
+
+  const [leftFighter, rightFighter] = state.fighters;
+  if (leftFighter.health === rightFighter.health) {
+    return null;
+  }
+
+  return leftFighter.health > rightFighter.health
+    ? leftFighter.slot
+    : rightFighter.slot;
+}
+
+function shouldUseWinStance(
+  state: MatchState,
+  fighter: MatchState['fighters'][number],
+) {
+  return getRoundWinnerSlot(state) === fighter.slot &&
+    fighter.health > 0 &&
+    fighter.grounded;
+}
+
 function getAvailableAnimationStance(
+  state: MatchState,
   fighter: MatchState['fighters'][number],
   manifest: FighterAssetManifest | undefined,
 ): FightAnimationStance | null {
@@ -507,7 +542,7 @@ function getAvailableAnimationStance(
     return null;
   }
 
-  const desiredStance = getDesiredAnimationStance(fighter);
+  const desiredStance = getDesiredAnimationStance(state, fighter);
   if (manifest.stanceSources[desiredStance].length > 0) {
     return desiredStance;
   }
@@ -764,6 +799,8 @@ function getAnimationFrameIndex(
       return Math.floor(matchFrame / 4) % frameCount;
     case 'ko':
       return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 16));
+    case 'win':
+      return Math.floor(fighter.actionFrames / 7) % frameCount;
     case 'special':
       return getSpecialAnimationFrameIndex(fighter, definition, frameCount);
     case 'attack1':
@@ -2747,7 +2784,11 @@ export function FightScene(props: FightSceneProps) {
           state.fighters.forEach((fighter) => {
             const definition = roster[fighter.fighterId];
             const manifest = fighterAssetManifestsRef.current[fighter.fighterId];
-            const activeStance = getAvailableAnimationStance(fighter, manifest);
+            const activeStance = getAvailableAnimationStance(
+              state,
+              fighter,
+              manifest,
+            );
             const existingSprite = this.fighterSprites.get(fighter.slot);
 
             if (activeStance && manifest) {

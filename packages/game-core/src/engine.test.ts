@@ -901,7 +901,7 @@ test("infinite timer configs do not tick down or end the round on time", () => {
   assert.equal(state.status, "fighting");
 });
 
-test("knockouts pause in round-over before resetting into the next round", () => {
+test("knockouts hold on round-over until a fresh button press advances", () => {
   const roster = { [fighter.id]: fighter };
   let state = createMatchState(roster, fighter.id, fighter.id);
   state.countdownFrames = 0;
@@ -914,18 +914,27 @@ test("knockouts pause in round-over before resetting into the next round", () =>
   assert.equal(state.round, 1);
   assert.equal(state.fighters[1].action, "ko");
   assert.equal(state.fighters[0].wins, 0);
-  assert.ok(state.roundOverFramesRemaining > 0);
+  assert.equal(state.roundOverFramesRemaining, FPS * 3);
 
   let framesWaited = 0;
-  while (state.status === "round-over" && framesWaited < FPS * 3) {
+  while (state.roundOverFramesRemaining > 0 && framesWaited < FPS * 3) {
     const previousFramesRemaining = state.roundOverFramesRemaining;
     state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
     framesWaited += 1;
-    if (state.status === "round-over") {
-      assert.ok(state.roundOverFramesRemaining < previousFramesRemaining);
-    }
+    assert.equal(state.status, "round-over");
+    assert.ok(state.roundOverFramesRemaining < previousFramesRemaining);
   }
 
+  assert.equal(state.roundOverFramesRemaining, 0);
+
+  state.fighters[0].lastInput = input({ punch: true });
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  assert.equal(state.status, "round-over");
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.status, "round-over");
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
   assert.equal(state.status, "countdown");
   assert.equal(state.round, 2);
   assert.equal(state.fighters[0].wins, 1);

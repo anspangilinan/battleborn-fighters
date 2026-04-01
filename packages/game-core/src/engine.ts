@@ -18,7 +18,7 @@ const DEFAULT_ATTACK_PROJECTILE_TIER = 1;
 const DEFAULT_CHIP_DAMAGE_RATIO = 0.05;
 const BLOCK_MELEE_THREAT_GAP = 22;
 const BLOCK_PROJECTILE_THREAT_FRAMES = 4;
-const ROUND_OVER_FRAMES = FPS * 2;
+const ROUND_OVER_MIN_FRAMES = FPS * 3;
 
 export const DEFAULT_CONFIG: MatchConfig = {
   width: 960,
@@ -258,8 +258,13 @@ export function stepMatch(
     }
   } else if (state.status === "round-over") {
     state.projectiles = [];
-    state.roundOverFramesRemaining = Math.max(0, state.roundOverFramesRemaining - 1);
-    if (state.roundOverFramesRemaining === 0) {
+    if (state.roundOverFramesRemaining > 0) {
+      state.roundOverFramesRemaining = Math.max(0, state.roundOverFramesRemaining - 1);
+    }
+    if (
+      state.roundOverFramesRemaining === 0 &&
+      shouldAdvanceRoundOver(state, inputA, inputB)
+    ) {
       resolveRoundResult(state, roster, config);
     }
   }
@@ -293,6 +298,28 @@ function getActiveSpecialCinematicOwnerSlot(
   }
 
   return null;
+}
+
+function hasFreshInput(
+  currentInput: InputState,
+  previousInput: InputState,
+) {
+  return (currentInput.left && !previousInput.left) ||
+    (currentInput.right && !previousInput.right) ||
+    (currentInput.up && !previousInput.up) ||
+    (currentInput.guard && !previousInput.guard) ||
+    (currentInput.punch && !previousInput.punch) ||
+    (currentInput.kick && !previousInput.kick) ||
+    (currentInput.special && !previousInput.special);
+}
+
+function shouldAdvanceRoundOver(
+  state: MatchState,
+  inputA: InputState,
+  inputB: InputState,
+) {
+  return hasFreshInput(inputA, state.fighters[0].lastInput) ||
+    hasFreshInput(inputB, state.fighters[1].lastInput);
 }
 
 function updateFighter(
@@ -1433,6 +1460,6 @@ function resolveRoundResult(
 
 function startRoundOver(state: MatchState) {
   state.status = "round-over";
-  state.roundOverFramesRemaining = ROUND_OVER_FRAMES;
+  state.roundOverFramesRemaining = ROUND_OVER_MIN_FRAMES;
   state.projectiles = [];
 }
