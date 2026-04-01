@@ -65,7 +65,6 @@ const botBehaviorSchema = z.object({
 export const characterSchema = z.object({
   id: z.string(),
   name: z.string(),
-  style: z.string(),
   palette: z.object({
     primary: z.string(),
     accent: z.string(),

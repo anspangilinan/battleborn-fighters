@@ -117,7 +117,6 @@ export interface BotBehaviorDefinition {
 export interface CharacterDefinition {
   id: string;
   name: string;
-  style: string;
   palette: {
     primary: string;
     accent: string;

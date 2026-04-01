@@ -7,7 +7,6 @@ import type { CharacterDefinition, InputState } from "./types";
 const fighter: CharacterDefinition = {
   id: "test-fighter",
   name: "Test Fighter",
-  style: "Balanced",
   palette: {
     primary: "#ff0000",
     accent: "#00ff00",

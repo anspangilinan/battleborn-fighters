@@ -67,6 +67,29 @@ type FightBotState = {
   dashJumpSequence: FightBotDashJumpSequence | null;
   projectileDodgeDecisions: Record<number, boolean>;
 };
+type NormalizedFightBotProfile = {
+  aggressiveness: number;
+  arenaMovement: {
+    preferredDistanceMultiplier: number;
+    approachBias: number;
+    retreatBias: number;
+    jumpInChance: number;
+    dashJumpForwardChance: number;
+    dashJumpBackwardChance: number;
+  };
+  skillChoice: {
+    punchWeight: number;
+    kickWeight: number;
+    specialWeight: number;
+    attackCadenceMultiplier: number;
+  };
+  defense: {
+    blockChance: number;
+    projectileDodgeChance: number;
+    meleeBlockReactionFrames: number;
+    projectileBlockReactionFrames: number;
+  };
+};
 
 export interface FightSceneProps {
   mode: FightMode;
@@ -935,6 +958,81 @@ function getMoveAiRange(move: CharacterDefinition['moves'][string] | undefined) 
   return getMoveMeleeRange(move) + 18 + Math.max(0, (move.rootVelocityX ?? 0) * move.startup);
 }
 
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function lerp(from: number, to: number, amount: number) {
+  return from + (to - from) * amount;
+}
+
+function getDeterministicAiRoll(seed: number) {
+  let value = seed | 0;
+  value = Math.imul(value ^ 0x45d9f3b, 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  return (value >>> 0) / 0xffffffff;
+}
+
+function doesAiRollPass(seed: number, chance: number) {
+  if (chance <= 0) {
+    return false;
+  }
+
+  if (chance >= 1) {
+    return true;
+  }
+
+  return getDeterministicAiRoll(seed) < chance;
+}
+
+function getFightBotProfile(
+  definition: CharacterDefinition,
+): NormalizedFightBotProfile {
+  const rawProfile = definition.bot;
+  const aggressiveness = clamp01(rawProfile?.aggressiveness ?? 0.5);
+
+  return {
+    aggressiveness,
+    arenaMovement: {
+      preferredDistanceMultiplier:
+        rawProfile?.arenaMovement?.preferredDistanceMultiplier ??
+        lerp(1.14, 0.88, aggressiveness),
+      approachBias:
+        rawProfile?.arenaMovement?.approachBias ??
+        lerp(0.42, 0.74, aggressiveness),
+      retreatBias:
+        rawProfile?.arenaMovement?.retreatBias ??
+        lerp(0.62, 0.3, aggressiveness),
+      jumpInChance:
+        rawProfile?.arenaMovement?.jumpInChance ??
+        lerp(0.38, 0.86, aggressiveness),
+      dashJumpForwardChance:
+        rawProfile?.arenaMovement?.dashJumpForwardChance ??
+        lerp(0.34, 0.82, aggressiveness),
+      dashJumpBackwardChance:
+        rawProfile?.arenaMovement?.dashJumpBackwardChance ??
+        lerp(0.58, 0.24, aggressiveness),
+    },
+    skillChoice: {
+      punchWeight: rawProfile?.skillChoice?.punchWeight ?? 1,
+      kickWeight: rawProfile?.skillChoice?.kickWeight ?? 1,
+      specialWeight: rawProfile?.skillChoice?.specialWeight ?? 1,
+      attackCadenceMultiplier:
+        rawProfile?.skillChoice?.attackCadenceMultiplier ??
+        lerp(1.14, 0.82, aggressiveness),
+    },
+    defense: {
+      blockChance: rawProfile?.defense?.blockChance ?? 1,
+      projectileDodgeChance:
+        rawProfile?.defense?.projectileDodgeChance ?? 0.5,
+      meleeBlockReactionFrames:
+        rawProfile?.defense?.meleeBlockReactionFrames ?? 1,
+      projectileBlockReactionFrames:
+        rawProfile?.defense?.projectileBlockReactionFrames ?? 4,
+    },
+  };
+}
+
 function isMoveAiReady(
   fighter: MatchState['fighters'][number],
   move: CharacterDefinition['moves'][string] | undefined,
@@ -963,17 +1061,63 @@ function getProjectileAiBand(
   };
 }
 
-function getAiAttackCadenceFrames(button: 'punch' | 'kick' | 'special') {
+function getAiAttackCadenceFrames(
+  button: 'punch' | 'kick' | 'special',
+  botProfile: NormalizedFightBotProfile,
+) {
+  let baseFrames: number;
   switch (button) {
     case 'punch':
-      return 42;
+      baseFrames = 42;
+      break;
     case 'kick':
-      return 72;
+      baseFrames = 72;
+      break;
     case 'special':
-      return 132;
+      baseFrames = 132;
+      break;
     default:
-      return 60;
+      baseFrames = 60;
   }
+
+  return Math.max(
+    12,
+    Math.round(baseFrames * botProfile.skillChoice.attackCadenceMultiplier),
+  );
+}
+
+function getAiAttackPreferenceScore(
+  button: AttackInputKey,
+  botProfile: NormalizedFightBotProfile,
+) {
+  const priority =
+    button === 'special' ? 3 : button === 'kick' ? 2 : 1;
+  const weight =
+    button === 'punch'
+      ? botProfile.skillChoice.punchWeight
+      : button === 'kick'
+        ? botProfile.skillChoice.kickWeight
+        : botProfile.skillChoice.specialWeight;
+
+  return priority * Math.max(0, weight);
+}
+
+function chooseAiAttackButton(
+  buttons: AttackInputKey[],
+  botProfile: NormalizedFightBotProfile,
+) {
+  if (buttons.length === 0) {
+    return null;
+  }
+
+  return buttons.slice(1).reduce(
+    (bestButton, button) =>
+      getAiAttackPreferenceScore(button, botProfile) >
+          getAiAttackPreferenceScore(bestButton, botProfile)
+        ? button
+        : bestButton,
+    buttons[0],
+  );
 }
 
 function createFightBotState(): FightBotState {
@@ -1025,13 +1169,18 @@ function pruneFightBotProjectileDecisions(
 function getFightBotProjectileDodgeDecision(
   botState: FightBotState,
   projectileId: number,
+  dodgeChance: number,
+  seedOffset = 0,
 ) {
   const existingDecision = botState.projectileDodgeDecisions[projectileId];
   if (existingDecision != null) {
     return existingDecision;
   }
 
-  const shouldDodge = projectileId % 2 === 0;
+  const shouldDodge = doesAiRollPass(
+    projectileId * 131 + seedOffset,
+    dodgeChance,
+  );
   botState.projectileDodgeDecisions[projectileId] = shouldDodge;
   return shouldDodge;
 }
@@ -1304,6 +1453,7 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
     return EMPTY_INPUT;
   }
 
+  const botProfile = getFightBotProfile(playerDefinition);
   const punchMove = playerDefinition?.moves.punch;
   const kickMove = playerDefinition?.moves.kick;
   const specialMove = playerDefinition?.moves.special;
@@ -1334,12 +1484,29 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
   const kickReady = isMoveAiReady(player, kickMove);
   const specialReady = isMoveAiReady(player, specialMove);
   const projectilePunchBand = getProjectileAiBand(punchMove);
+  const preferredProjectileBandMin = projectilePunchBand
+    ? projectilePunchBand.min *
+      botProfile.arenaMovement.preferredDistanceMultiplier
+    : null;
+  const preferredProjectileBandMax = projectilePunchBand
+    ? projectilePunchBand.max *
+      botProfile.arenaMovement.preferredDistanceMultiplier
+    : null;
   const meleePunchRange = punchMove?.projectile ? 0 : punchRange;
   const closeMeleeRange = Math.max(
     specialReady ? specialRange : 0,
     kickReady ? kickRange : 0,
     punchReady ? meleePunchRange : 0,
   );
+  const preferredCloseRange =
+    closeMeleeRange * botProfile.arenaMovement.preferredDistanceMultiplier;
+  const approachSlack = lerp(30, 8, botProfile.arenaMovement.approachBias);
+  const retreatDistanceMultiplier = lerp(
+    0.56,
+    0.92,
+    botProfile.arenaMovement.retreatBias,
+  );
+  const retreatSlack = lerp(0, 20, botProfile.arenaMovement.retreatBias);
   const nextInput = cloneInput();
   const projectileThreat = getAiProjectileThreat(
     state,
@@ -1367,18 +1534,30 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
       !punchMove?.projectile &&
       absoluteDistance <= punchRange + 14;
 
-    nextInput.special =
+    const aerialAttackButtons: AttackInputKey[] = [];
+    if (
       canLandAerialSpecial &&
-      state.frame % getAiAttackCadenceFrames('special') === 0;
-    nextInput.kick =
-      !nextInput.special &&
+      state.frame % getAiAttackCadenceFrames('special', botProfile) === 0
+    ) {
+      aerialAttackButtons.push('special');
+    }
+    if (
       canLandAerialKick &&
-      state.frame % getAiAttackCadenceFrames('kick') === 0;
-    nextInput.punch =
-      !nextInput.special &&
-      !nextInput.kick &&
+      state.frame % getAiAttackCadenceFrames('kick', botProfile) === 0
+    ) {
+      aerialAttackButtons.push('kick');
+    }
+    if (
       (canThrowAerialProjectile || canLandAerialPunch) &&
-      state.frame % getAiAttackCadenceFrames('punch') === 0;
+      state.frame % getAiAttackCadenceFrames('punch', botProfile) === 0
+    ) {
+      aerialAttackButtons.push('punch');
+    }
+
+    const aerialAttack = chooseAiAttackButton(aerialAttackButtons, botProfile);
+    if (aerialAttack) {
+      nextInput[aerialAttack] = true;
+    }
     return nextInput;
   }
 
@@ -1386,20 +1565,29 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
   let moveAway = false;
 
   if (projectilePunchBand && punchReady) {
-    if (absoluteDistance < projectilePunchBand.min && closeMeleeRange === 0) {
+    if (
+      preferredProjectileBandMin != null &&
+      absoluteDistance < preferredProjectileBandMin &&
+      closeMeleeRange === 0
+    ) {
       moveAway = true;
-    } else if (absoluteDistance > projectilePunchBand.max) {
+    } else if (
+      preferredProjectileBandMax != null &&
+      absoluteDistance > preferredProjectileBandMax - approachSlack
+    ) {
       moveToward = true;
     }
   }
 
   if (!moveToward && !moveAway && closeMeleeRange > 0) {
-    if (absoluteDistance > closeMeleeRange + 14) {
+    if (absoluteDistance > preferredCloseRange + approachSlack) {
       moveToward = true;
     } else if (
-      projectilePunchBand &&
+      preferredProjectileBandMin != null &&
       punchReady &&
-      absoluteDistance < Math.max(56, projectilePunchBand.min * 0.8)
+      absoluteDistance <
+        Math.max(56, preferredProjectileBandMin * retreatDistanceMultiplier) +
+          retreatSlack
     ) {
       moveAway = true;
     }
@@ -1414,7 +1602,11 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
     jumpAttackRange > 0 &&
     absoluteDistance >= Math.max(90, jumpAttackRange * 0.82) &&
     absoluteDistance <= jumpAttackRange + 30 &&
-    state.frame % 96 === 0;
+    state.frame % 96 === 0 &&
+    doesAiRollPass(
+      state.frame + player.slot * 113 + Math.round(absoluteDistance),
+      botProfile.arenaMovement.jumpInChance,
+    );
   const canStartDashJump =
     state.frame >= botState.dashJumpCooldownUntilFrame &&
     player.dashFramesRemaining === 0;
@@ -1424,13 +1616,25 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
     getFightBotProjectileDodgeDecision(
       botState,
       projectileThreat.projectile.id,
+      botProfile.defense.projectileDodgeChance,
+      player.slot * 79 + playerDefinition.id.length,
     );
+  const shouldGuardMeleeThreat =
+    meleeThreat != null &&
+    meleeThreat.framesUntilImpact <=
+      botProfile.defense.meleeBlockReactionFrames;
+  const shouldGuardProjectileThreat =
+    projectileThreat != null &&
+    projectileThreat.framesUntilImpact <=
+      botProfile.defense.projectileBlockReactionFrames &&
+    !shouldDodgeProjectile;
   const shouldGuardThreat =
-    meleeThreat?.framesUntilImpact === 1 ||
-    (
-      projectileThreat != null &&
-      projectileThreat.framesUntilImpact <= 4 &&
-      !shouldDodgeProjectile
+    (shouldGuardMeleeThreat || shouldGuardProjectileThreat) &&
+    doesAiRollPass(
+      shouldGuardProjectileThreat && projectileThreat
+        ? projectileThreat.projectile.id * 43 + player.slot
+        : state.frame + target.attackFrame * 29 + target.slot * 11,
+      botProfile.defense.blockChance,
     );
 
   if (shouldDodgeProjectile) {
@@ -1456,11 +1660,19 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
     const shouldDashJumpToward =
       moveToward &&
       absoluteDistance >= Math.max(170, closeMeleeRange + 72) &&
-      state.frame % 90 === 0;
+      state.frame % 90 === 0 &&
+      doesAiRollPass(
+        state.frame + player.slot * 61,
+        botProfile.arenaMovement.dashJumpForwardChance,
+      );
     const shouldDashJumpAway =
       moveAway &&
       absoluteDistance <= Math.max(220, closeMeleeRange + 64) &&
-      state.frame % 120 === 0;
+      state.frame % 120 === 0 &&
+      doesAiRollPass(
+        state.frame + player.slot * 67,
+        botProfile.arenaMovement.dashJumpBackwardChance,
+      );
 
     if (shouldDashJumpToward || shouldDashJumpAway) {
       beginFightBotDashJumpSequence(
@@ -1478,29 +1690,46 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
   nextInput[awayKey] = moveAway && !moveToward;
   nextInput.up = shouldJumpAttack;
 
-  nextInput.special =
+  const groundAttackButtons: AttackInputKey[] = [];
+  if (
     !shouldJumpAttack &&
     specialReady &&
     absoluteDistance <= specialRange + 10 &&
-    state.frame % getAiAttackCadenceFrames('special') === 0;
-  nextInput.kick =
+    state.frame % getAiAttackCadenceFrames('special', botProfile) === 0
+  ) {
+    groundAttackButtons.push('special');
+  }
+  if (
     !shouldJumpAttack &&
-    !nextInput.special &&
     kickReady &&
     absoluteDistance <= kickRange + 8 &&
-    state.frame % getAiAttackCadenceFrames('kick') === 0;
-  nextInput.punch =
+    state.frame % getAiAttackCadenceFrames('kick', botProfile) === 0
+  ) {
+    groundAttackButtons.push('kick');
+  }
+  if (
     !shouldJumpAttack &&
-    !nextInput.special &&
-    !nextInput.kick &&
     punchReady &&
     (
       projectilePunchBand
-        ? absoluteDistance >= projectilePunchBand.min &&
-          absoluteDistance <= projectilePunchBand.max
+        ? preferredProjectileBandMin != null &&
+          preferredProjectileBandMax != null &&
+          absoluteDistance >= preferredProjectileBandMin &&
+          absoluteDistance <= preferredProjectileBandMax
         : absoluteDistance <= punchRange + 8
     ) &&
-    state.frame % getAiAttackCadenceFrames('punch') === 0;
+    state.frame % getAiAttackCadenceFrames('punch', botProfile) === 0
+  ) {
+    groundAttackButtons.push('punch');
+  }
+
+  const selectedGroundAttack = chooseAiAttackButton(
+    groundAttackButtons,
+    botProfile,
+  );
+  if (selectedGroundAttack) {
+    nextInput[selectedGroundAttack] = true;
+  }
 
   return nextInput;
 }

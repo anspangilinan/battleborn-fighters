@@ -7,7 +7,6 @@ function hitbox(hit: HitBox): HitBox {
 const morana: CharacterDefinition = {
   id: 'morana',
   name: 'Morana',
-  style: 'Shoto / control',
   palette: {
     primary: '#37d4ff',
     accent: '#fff07f',
@@ -16,6 +15,29 @@ const morana: CharacterDefinition = {
   sprites: {
     portrait: '/characters/morana/portrait.png',
     renderHeight: 120,
+  },
+  bot: {
+    aggressiveness: 0.42,
+    arenaMovement: {
+      preferredDistanceMultiplier: 1.18,
+      approachBias: 0.34,
+      retreatBias: 0.82,
+      jumpInChance: 0.18,
+      dashJumpForwardChance: 0.22,
+      dashJumpBackwardChance: 0.76,
+    },
+    skillChoice: {
+      punchWeight: 1.5,
+      kickWeight: 0.85,
+      specialWeight: 1.15,
+      attackCadenceMultiplier: 1.02,
+    },
+    defense: {
+      blockChance: 0.96,
+      projectileDodgeChance: 0.68,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 6,
+    },
   },
   stats: {
     maxHealth: 1000,
@@ -142,7 +164,6 @@ const morana: CharacterDefinition = {
 const mcbalut: CharacterDefinition = {
   id: 'mcbalut',
   name: 'mcbalut',
-  style: 'Prototype / TBD',
   palette: {
     primary: '#7de06e',
     accent: '#f6dd67',
@@ -151,6 +172,29 @@ const mcbalut: CharacterDefinition = {
   sprites: {
     portrait: '/characters/mcbalut/portrait.png',
     renderHeight: 110,
+  },
+  bot: {
+    aggressiveness: 1,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.72,
+      approachBias: 1,
+      retreatBias: 0,
+      jumpInChance: 1,
+      dashJumpForwardChance: 1,
+      dashJumpBackwardChance: 1,
+    },
+    skillChoice: {
+      punchWeight: 2,
+      kickWeight: 2,
+      specialWeight: 2,
+      attackCadenceMultiplier: 0.7,
+    },
+    defense: {
+      blockChance: 1,
+      projectileDodgeChance: 1,
+      meleeBlockReactionFrames: 2,
+      projectileBlockReactionFrames: 8,
+    },
   },
   stats: {
     maxHealth: 1020,
@@ -270,7 +314,6 @@ const mcbalut: CharacterDefinition = {
 const digv: CharacterDefinition = {
   id: 'digv',
   name: 'DigV',
-  style: 'Prototype / TBD',
   palette: {
     primary: '#7d8fff',
     accent: '#f2be67',
@@ -279,6 +322,29 @@ const digv: CharacterDefinition = {
   sprites: {
     portrait: '/characters/digv/portrait.png',
     renderHeight: 100,
+  },
+  bot: {
+    aggressiveness: 0.64,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.98,
+      approachBias: 0.7,
+      retreatBias: 0.4,
+      jumpInChance: 0.46,
+      dashJumpForwardChance: 0.62,
+      dashJumpBackwardChance: 0.34,
+    },
+    skillChoice: {
+      punchWeight: 1.1,
+      kickWeight: 0.94,
+      specialWeight: 1.28,
+      attackCadenceMultiplier: 0.92,
+    },
+    defense: {
+      blockChance: 0.86,
+      projectileDodgeChance: 0.58,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 4,
+    },
   },
   stats: {
     maxHealth: 1010,
@@ -388,7 +454,6 @@ const digv: CharacterDefinition = {
 const paraktaktak: CharacterDefinition = {
   id: 'paraktaktak',
   name: 'ParakTakTak',
-  style: 'Prototype / rushdown',
   palette: {
     primary: '#e3c25d',
     accent: '#f79642',
@@ -397,6 +462,29 @@ const paraktaktak: CharacterDefinition = {
   sprites: {
     portrait: '/characters/paraktaktak/portrait.png',
     renderHeight: 165,
+  },
+  bot: {
+    aggressiveness: 0.84,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.84,
+      approachBias: 0.92,
+      retreatBias: 0.16,
+      jumpInChance: 0.82,
+      dashJumpForwardChance: 0.9,
+      dashJumpBackwardChance: 0.12,
+    },
+    skillChoice: {
+      punchWeight: 1.4,
+      kickWeight: 1.08,
+      specialWeight: 0.92,
+      attackCadenceMultiplier: 0.76,
+    },
+    defense: {
+      blockChance: 0.74,
+      projectileDodgeChance: 0.34,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 3,
+    },
   },
   stats: {
     maxHealth: 1030,
@@ -504,7 +592,6 @@ const paraktaktak: CharacterDefinition = {
 const quaneshalatonya: CharacterDefinition = {
   id: 'quaneshalatonya',
   name: 'Quaneshalatonya',
-  style: 'Grace / midrange',
   palette: {
     primary: '#ff78b0',
     accent: '#ffd670',
@@ -513,6 +600,29 @@ const quaneshalatonya: CharacterDefinition = {
   sprites: {
     portrait: '/characters/quaneshalatonya/portrait.png',
     renderHeight: 152,
+  },
+  bot: {
+    aggressiveness: 0.58,
+    arenaMovement: {
+      preferredDistanceMultiplier: 1,
+      approachBias: 0.62,
+      retreatBias: 0.42,
+      jumpInChance: 0.36,
+      dashJumpForwardChance: 0.5,
+      dashJumpBackwardChance: 0.28,
+    },
+    skillChoice: {
+      punchWeight: 1.1,
+      kickWeight: 1,
+      specialWeight: 1.04,
+      attackCadenceMultiplier: 0.96,
+    },
+    defense: {
+      blockChance: 0.88,
+      projectileDodgeChance: 0.52,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 4,
+    },
   },
   stats: {
     maxHealth: 980,
