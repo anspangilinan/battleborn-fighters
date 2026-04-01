@@ -159,7 +159,7 @@ function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
   }
 
   const currentSource = frameSources[currentFrame] ?? portraitSource;
-  const renderHeight = (fighter.sprites.renderHeight ?? 168) * 3;
+  const renderHeight = (fighter.sprites.renderHeight ?? 168) * 2;
 
   return (
     <div className={`landing-menu-character landing-menu-character-${side}`}>
@@ -350,10 +350,11 @@ export function HomeScreen() {
     return (
       <main className="landing-page landing-title-screen" role="button" tabIndex={0} aria-label="Press any button to open the main menu">
         <div className="landing-title-content">
-          <div className="landing-title-logo" aria-label="Battleborn Fighters">
-            <span className="landing-title-logo-top">Battleborn</span>
-            <span className="landing-title-logo-bottom">Fighters</span>
-          </div>
+          <img
+            className="landing-title-logo"
+            src="/fighters-pixel-logo.png"
+            alt="Battleborn Fighters"
+          />
           <p className="landing-title-prompt">Press Any Button</p>
         </div>
       </main>
@@ -362,23 +363,31 @@ export function HomeScreen() {
 
   return (
     <main className="landing-page landing-menu-screen">
-      <MenuCharacterDisplay fighter={leftFighter} side="left" />
+      <img
+        className="landing-menu-logo"
+        src="/fighters-pixel-logo.png"
+        alt="Battleborn Fighters"
+      />
 
-      <nav className="landing-menu-nav" aria-label="Main menu">
-        {menuEntries.map((entry, index) => (
-          <ArcadeMenuItem
-            key={entry.label}
-            href={entry.href}
-            disabled={entry.disabled}
-            className="landing-menu-link"
-            style={{ animationDelay: `${index * 120}ms` }}
-          >
-            {entry.label}
-          </ArcadeMenuItem>
-        ))}
-      </nav>
+      <div className="landing-menu-main">
+        <MenuCharacterDisplay fighter={leftFighter} side="left" />
 
-      <MenuCharacterDisplay fighter={rightFighter} side="right" />
+        <nav className="landing-menu-nav" aria-label="Main menu">
+          {menuEntries.map((entry, index) => (
+            <ArcadeMenuItem
+              key={entry.label}
+              href={entry.href}
+              disabled={entry.disabled}
+              className="landing-menu-link"
+              style={{ animationDelay: `${index * 120}ms` }}
+            >
+              {entry.label}
+            </ArcadeMenuItem>
+          ))}
+        </nav>
+
+        <MenuCharacterDisplay fighter={rightFighter} side="right" />
+      </div>
     </main>
   );
 }
