@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_CONFIG, EMPTY_INPUT, FPS, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
-import type { CharacterDefinition } from "./types";
+import { DEFAULT_CONFIG, EMPTY_INPUT, FPS, cloneInput, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
+import type { CharacterDefinition, InputState } from "./types";
 
 const fighter: CharacterDefinition = {
   id: "test-fighter",
@@ -46,7 +46,7 @@ const fighter: CharacterDefinition = {
       recovery: 4,
       frameBoxes: {
         1: {
-          hitboxes: [{ x: 8, y: -72, width: 18, height: 14, damage: 50, hitstun: 8, knockbackX: 5 }],
+          hitboxes: [{ x: 8, y: -72, width: 18, height: 14, damage: 50, chipDamage: 2, hitstun: 8, knockbackX: 5 }],
         },
       },
     },
@@ -79,6 +79,10 @@ const fighter: CharacterDefinition = {
     },
   },
 };
+
+function input(overrides: Partial<InputState> = {}): InputState {
+  return cloneInput(overrides);
+}
 
 function createOffPathDummy(id: string): CharacterDefinition {
   return {
@@ -181,6 +185,104 @@ const cappedProjectileFighter: CharacterDefinition = {
   },
 };
 
+const cinematicSpecialFighter: CharacterDefinition = {
+  ...fighter,
+  id: "cinematic-special-fighter",
+  name: "Cinematic Special Fighter",
+  moves: {
+    ...fighter.moves,
+    special: {
+      id: "special",
+      label: "Sky Bolt",
+      button: "special",
+      startup: 8,
+      active: 2,
+      recovery: 8,
+      cooldownSeconds: 10,
+      specialSequence: {
+        buildUpFrames: 8,
+        animationBuildUpFrames: 4,
+        pauseFrames: 2,
+        zoomOutFrames: 3,
+        holdUntilGroundedAfterBuildUp: true,
+      },
+      projectile: {
+        sprite: "crossbow-bolt",
+        tier: 1,
+        spawnFrame: 14,
+        offsetX: 18,
+        offsetY: -72,
+        speed: 20,
+        targeting: "opponent",
+        minimumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: "origin",
+        hitbox: {
+          x: -18,
+          y: -4,
+          width: 36,
+          height: 8,
+          damage: 90,
+          hitstun: 12,
+          knockbackX: 9,
+        },
+      },
+    },
+  },
+};
+
+const channelingSpecialFighter: CharacterDefinition = {
+  ...fighter,
+  id: "channeling-special-fighter",
+  name: "Channeling Special Fighter",
+  moves: {
+    ...fighter.moves,
+    special: {
+      id: "special",
+      label: "Frost Barrage",
+      button: "special",
+      startup: 10,
+      active: 1,
+      recovery: 60,
+      cooldownSeconds: 1.6,
+      interruptible: false,
+      specialSequence: {
+        buildUpFrames: 10,
+        animationBuildUpFrames: 10,
+        buildUpAnimation: "special-pose",
+        animationMode: "loop",
+        loopFrameDuration: 4,
+        channelMoveSpeed: 3.2,
+        hoverHeight: 10,
+        zoomOutFrames: 6,
+      },
+      projectile: {
+        sprite: "morana/special",
+        tier: 2,
+        spawnFrame: 11,
+        shotCount: 3,
+        shotIntervalFrames: 30,
+        offsetX: 24,
+        offsetY: -60,
+        speed: 10.5,
+        minimumDistanceRatio: 1,
+        maximumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: "origin",
+        hitbox: {
+          x: -18,
+          y: -18,
+          width: 36,
+          height: 36,
+          damage: 42,
+          hitstun: 9,
+          knockbackX: 6,
+        },
+      },
+    },
+  },
+};
+
 const cooldownFighter: CharacterDefinition = {
   ...fighter,
   id: "cooldown-fighter",
@@ -208,8 +310,8 @@ const extendedRangeFighter: CharacterDefinition = {
 };
 
 test("input encoding round-trips", () => {
-  const mask = encodeInput({ left: true, right: false, up: true, punch: true, kick: false, special: true });
-  assert.deepEqual(decodeInput(mask), { left: true, right: false, up: true, punch: true, kick: false, special: true });
+  const mask = encodeInput(input({ left: true, up: true, punch: true, special: true }));
+  assert.deepEqual(decodeInput(mask), input({ left: true, up: true, punch: true, special: true }));
 });
 
 test("fighters take damage when an attack overlaps hurtboxes", () => {
@@ -223,13 +325,62 @@ test("fighters take damage when an attack overlaps hurtboxes", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
-    { left: false, right: false, up: false, punch: false, kick: false, special: false },
+    input({ punch: true }),
+    EMPTY_INPUT,
   );
-  state = stepMatch(state, roster, { left: false, right: false, up: false, punch: false, kick: false, special: false }, { left: false, right: false, up: false, punch: false, kick: false, special: false });
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
 
   assert.equal(state.fighters[1].health, 950);
   assert.ok(state.events.some((entry) => entry.includes("landed Punch")));
+});
+
+test("guarding a melee hit applies configured chip damage and no hitstun", () => {
+  const roster = {
+    [extendedRangeFighter.id]: extendedRangeFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, extendedRangeFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 420;
+  state.fighters[1].x = 448;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ punch: true }),
+    input({ right: true }),
+  );
+  state = stepMatch(
+    state,
+    roster,
+    EMPTY_INPUT,
+    input({ right: true }),
+  );
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 2);
+  assert.equal(state.fighters[1].action, "guard");
+  assert.equal(state.fighters[1].hitstun, 0);
+  assert.ok(state.events.some((entry) => entry.includes("blocked Punch")));
+});
+
+test("holding back without a nearby threat keeps walking backward", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 420;
+  state.fighters[1].x = 720;
+
+  state = stepMatch(
+    state,
+    roster,
+    EMPTY_INPUT,
+    input({ right: true }),
+  );
+
+  assert.equal(state.fighters[1].action, "walk");
+  assert.ok(state.fighters[1].vx > 0);
 });
 
 test("configured melee range extends attack reach", () => {
@@ -243,7 +394,7 @@ test("configured melee range extends attack reach", () => {
   baseState = stepMatch(
     baseState,
     baseRoster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
   baseState = stepMatch(baseState, baseRoster, EMPTY_INPUT, EMPTY_INPUT);
@@ -263,7 +414,7 @@ test("configured melee range extends attack reach", () => {
   rangedState = stepMatch(
     rangedState,
     rangedRoster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
   rangedState = stepMatch(rangedState, rangedRoster, EMPTY_INPUT, EMPTY_INPUT);
@@ -287,7 +438,7 @@ test("configured melee range keeps point-blank melee hits active", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
   state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
@@ -308,7 +459,7 @@ test("move cooldowns block attacks until the configured frames expire", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 
@@ -326,7 +477,7 @@ test("move cooldowns block attacks until the configured frames expire", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 
@@ -341,11 +492,214 @@ test("move cooldowns block attacks until the configured frames expire", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 
   assert.equal(state.fighters[0].attackId, "punch");
+});
+
+
+test("specials start on half cooldown and are unavailable immediately", () => {
+  const roster = {
+    [cinematicSpecialFighter.id]: cinematicSpecialFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, cinematicSpecialFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+
+  const expectedInitialCooldown = Math.ceil(getMoveCooldownFrames(cinematicSpecialFighter.moves.special) * 0.5);
+  assert.equal(state.fighters[0].moveCooldownFrames.special, expectedInitialCooldown);
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    EMPTY_INPUT,
+  );
+
+  assert.equal(state.fighters[0].attackId, null);
+  assert.ok(state.fighters[0].moveCooldownFrames.special < expectedInitialCooldown);
+
+  for (let index = 0; index < expectedInitialCooldown && state.fighters[0].moveCooldownFrames.special > 0; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].moveCooldownFrames.special, 0);
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    EMPTY_INPUT,
+  );
+
+  assert.equal(state.fighters[0].attackId, "special");
+});
+
+test("channeling specials allow horizontal drift without changing projectile direction", () => {
+  const offPathDummy = createOffPathDummy("off-path-dummy");
+  const roster = {
+    [channelingSpecialFighter.id]: channelingSpecialFighter,
+    [offPathDummy.id]: offPathDummy,
+  };
+  let state = createMatchState(roster, channelingSpecialFighter.id, offPathDummy.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].moveCooldownFrames.special = 0;
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 760;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    EMPTY_INPUT,
+  );
+
+  const startingX = state.fighters[0].x;
+  const spawnAttackFrames: number[] = [];
+  const projectileVelocitiesX: number[] = [];
+  let lastProjectileId = state.nextProjectileId;
+  let injectedHitstun = false;
+
+  for (let index = 0; index < 120; index += 1) {
+    const nextInput = index >= 16 && index < 60
+      ? input({ left: true })
+      : EMPTY_INPUT;
+    state = stepMatch(state, roster, nextInput, EMPTY_INPUT);
+
+    if (state.nextProjectileId !== lastProjectileId) {
+      spawnAttackFrames.push(state.fighters[0].attackFrame);
+      projectileVelocitiesX.push(state.projectiles.at(-1)?.vx ?? 0);
+      lastProjectileId = state.nextProjectileId;
+
+      if (!injectedHitstun) {
+        state.fighters[0].hitstun = 5;
+        state.fighters[0].action = "hit";
+        injectedHitstun = true;
+      }
+    }
+  }
+
+  assert.deepEqual(spawnAttackFrames, [11, 41, 71]);
+  assert.deepEqual(projectileVelocitiesX.map((velocity) => Math.sign(velocity)), [1, 1, 1]);
+  assert.equal(state.nextProjectileId, 4);
+  assert.equal(state.fighters[0].attackId, null);
+  assert.ok(state.fighters[0].x < startingX);
+});
+
+test("special cinematics freeze the opponent and timer until follow-through resumes", () => {
+  const roster = {
+    [cinematicSpecialFighter.id]: cinematicSpecialFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, cinematicSpecialFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].moveCooldownFrames.special = 0;
+  state.fighters[0].x = 320;
+  state.fighters[1].x = 660;
+
+  const frozenTimer = state.timerFramesRemaining;
+  const frozenOpponentX = state.fighters[1].x;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    input({ left: true }),
+  );
+
+  assert.equal(state.fighters[0].specialMovePhase, "build-up");
+
+  for (let index = 0; index < 20 && state.fighters[0].specialMovePhase !== "follow-through"; index += 1) {
+    state = stepMatch(
+      state,
+      roster,
+      EMPTY_INPUT,
+      input({ left: true }),
+    );
+
+    if (state.fighters[0].specialMovePhase !== "follow-through") {
+      assert.equal(state.fighters[1].x, frozenOpponentX);
+      assert.equal(state.timerFramesRemaining, frozenTimer);
+    }
+  }
+
+  assert.equal(state.fighters[0].specialMovePhase, "follow-through");
+  assert.equal(state.projectiles.length, 0);
+
+  state = stepMatch(
+    state,
+    roster,
+    EMPTY_INPUT,
+    input({ left: true }),
+  );
+
+  assert.ok(state.fighters[1].x < frozenOpponentX);
+  assert.ok(state.timerFramesRemaining < frozenTimer);
+  assert.equal(state.projectiles.length, 0);
+});
+
+test("aerial specials wait to land before firing their follow-through projectile", () => {
+  const roster = {
+    [cinematicSpecialFighter.id]: cinematicSpecialFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, cinematicSpecialFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].moveCooldownFrames.special = 0;
+  state.fighters[0].x = 180;
+  state.fighters[0].y = DEFAULT_CONFIG.groundY - 160;
+  state.fighters[0].grounded = false;
+  state.fighters[0].action = "jump";
+  state.fighters[1].x = 780;
+  state.fighters[1].y = DEFAULT_CONFIG.groundY;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    EMPTY_INPUT,
+  );
+
+  for (let index = 0; index < 30 && state.fighters[0].specialMovePhase !== "landing-hold"; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].specialMovePhase, "landing-hold");
+  assert.equal(state.projectiles.length, 0);
+
+  for (let index = 0; index < 60 && !state.fighters[0].grounded; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].grounded, true);
+  assert.equal(state.projectiles.length, 0);
+  assert.equal(state.fighters[0].specialMovePhase, "landing-hold");
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.fighters[0].specialMovePhase, "pause");
+  assert.equal(state.projectiles.length, 0);
+
+  for (let index = 0; index < 10 && state.fighters[0].specialMovePhase !== "follow-through"; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].specialMovePhase, "follow-through");
+  assert.equal(state.projectiles.length, 0);
+
+  for (let index = 0; index < 10 && state.projectiles.length === 0; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.projectiles.length, 1);
+  assert.ok(state.projectiles[0].vx > 0);
+  assert.ok(state.projectiles[0].vy > 0);
+  assert.ok(Math.abs(Math.hypot(state.projectiles[0].vx, state.projectiles[0].vy) - 20) < 0.001);
 });
 
 test("fighters can dash with a quick double tap", () => {
@@ -357,20 +711,20 @@ test("fighters can dash with a quick double tap", () => {
   state = stepMatch(
     state,
     roster,
-    { left: true, right: false, up: false, punch: false, kick: false, special: false },
-    { left: false, right: false, up: false, punch: false, kick: false, special: false },
+    input({ left: true }),
+    EMPTY_INPUT,
   );
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: false, kick: false, special: false },
-    { left: false, right: false, up: false, punch: false, kick: false, special: false },
+    EMPTY_INPUT,
+    EMPTY_INPUT,
   );
   state = stepMatch(
     state,
     roster,
-    { left: true, right: false, up: false, punch: false, kick: false, special: false },
-    { left: false, right: false, up: false, punch: false, kick: false, special: false },
+    input({ left: true }),
+    EMPTY_INPUT,
   );
 
   assert.equal(state.fighters[0].action, "dash");
@@ -402,14 +756,14 @@ test("dash lift is visual only and keeps fighters grounded", () => {
   state = stepMatch(
     state,
     roster,
-    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    input({ left: true }),
     EMPTY_INPUT,
   );
   state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
   state = stepMatch(
     state,
     roster,
-    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    input({ left: true }),
     EMPTY_INPUT,
   );
 
@@ -442,20 +796,20 @@ test("fighters can jump out of a floating dash if jump is unused", () => {
   state = stepMatch(
     state,
     roster,
-    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    input({ left: true }),
     EMPTY_INPUT,
   );
   state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
   state = stepMatch(
     state,
     roster,
-    { left: true, right: false, up: false, punch: false, kick: false, special: false },
+    input({ left: true }),
     EMPTY_INPUT,
   );
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: true, punch: false, kick: false, special: false },
+    input({ up: true }),
     EMPTY_INPUT,
   );
 
@@ -477,13 +831,13 @@ test("fighters can jump over each other and switch facing after crossing", () =>
   state = stepMatch(
     state,
     roster,
-    { left: false, right: true, up: false, punch: false, kick: false, special: false },
+    input({ right: true }),
     EMPTY_INPUT,
   );
   state = stepMatch(
     state,
     roster,
-    { left: false, right: true, up: true, punch: false, kick: false, special: false },
+    input({ right: true, up: true }),
     EMPTY_INPUT,
   );
 
@@ -594,7 +948,7 @@ test("projectile punches spawn an arcing shot that can hit at range", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 
@@ -614,6 +968,33 @@ test("projectile punches spawn an arcing shot that can hit at range", () => {
   assert.ok(state.events.some((entry) => entry.includes("landed Bolt Shot")));
 });
 
+test("guarding a projectile applies default chip damage only", () => {
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, projectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 180;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ punch: true }),
+    input({ right: true }),
+  );
+
+  for (let index = 0; index < 60 && state.fighters[1].health === fighter.stats.maxHealth; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, input({ right: true }));
+  }
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 3);
+  assert.equal(state.fighters[1].hitstun, 0);
+  assert.ok(state.events.some((entry) => entry.includes("blocked Bolt Shot")));
+});
+
 test("projectile apex height stays stable when speed changes", () => {
   function simulateProjectileArc(attacker: CharacterDefinition) {
     const offPathDummy = createOffPathDummy(`${attacker.id}-dummy`);
@@ -630,7 +1011,7 @@ test("projectile apex height stays stable when speed changes", () => {
     state = stepMatch(
       state,
       roster,
-      { left: false, right: false, up: false, punch: true, kick: false, special: false },
+      input({ punch: true }),
       EMPTY_INPUT,
     );
 
@@ -678,7 +1059,7 @@ test("ground-launched floor projectiles reach the floor around their minimum dis
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 
@@ -717,7 +1098,7 @@ test("aerial floor projectiles travel past their minimum distance before disappe
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 
@@ -753,7 +1134,7 @@ test("straight projectiles can disperse at a fixed maximum distance", () => {
   state = stepMatch(
     state,
     roster,
-    { left: false, right: false, up: false, punch: true, kick: false, special: false },
+    input({ punch: true }),
     EMPTY_INPUT,
   );
 

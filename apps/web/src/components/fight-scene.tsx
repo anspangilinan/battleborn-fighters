@@ -18,7 +18,9 @@ import {
   getMoveCooldownFrames,
   getMoveMeleeRange,
   stepMatch,
+  type Box,
   type CharacterDefinition,
+  type Facing,
   type InputState,
   type MatchState,
 } from '@battleborn/game-core';
@@ -46,6 +48,24 @@ type AttackCooldownDisplay = {
   remainingFrames: number;
   remainingLabel: string;
   remainingRatio: number;
+};
+type FightAnnouncementPhase = 'round' | 'fight' | 'ko';
+type FightAnnouncement = {
+  eyebrow: string;
+  title: string;
+  phase: FightAnnouncementPhase;
+};
+type AiDirectionKey = 'left' | 'right';
+type FightBotDashJumpSequence = {
+  directionKey: AiDirectionKey;
+  dodgeProjectileId: number | null;
+  secondTapFrame: number | null;
+  step: 'first-tap' | 'release' | 'second-tap' | 'jump';
+};
+type FightBotState = {
+  dashJumpCooldownUntilFrame: number;
+  dashJumpSequence: FightBotDashJumpSequence | null;
+  projectileDodgeDecisions: Record<number, boolean>;
 };
 
 export interface FightSceneProps {
@@ -82,14 +102,19 @@ const fightAnimationStances = [
   'idle',
   'walk',
   'jump',
+  'block',
   'dash',
   'hurt',
   'ko',
   'attack1',
   'attack2',
   'special',
+  'special-pose',
 ] as const;
 type FightAnimationStance = (typeof fightAnimationStances)[number];
+const KO_SLOWDOWN_DURATION_MS = 260;
+const KO_SLOWDOWN_TIME_SCALE = 1 / 3;
+const KO_ANNOUNCEMENT_DURATION_MS = 2000;
 
 type FighterAssetManifest = {
   headshotSource: string | null;
@@ -120,14 +145,11 @@ const projectileAssetSourcePromiseCache = new Map<
 >();
 const projectileAssetExtensions = ['png', 'webp', 'svg', 'jpg', 'jpeg'];
 
-const movementControls: Array<Array<{ key: ControlInputKey; label: string }>> =
-  [
-    [{ key: 'up', label: 'W' }],
-    [
-      { key: 'left', label: 'A' },
-      { key: 'right', label: 'D' },
-    ],
-  ];
+const movementControls: Array<{ key: ControlInputKey; label: string }> = [
+  { key: 'left', label: 'A' },
+  { key: 'up', label: 'W' },
+  { key: 'right', label: 'D' },
+];
 
 const attackControls: Array<Array<{ key: ControlInputKey; label: string }>> = [
   [
@@ -439,6 +461,10 @@ function getDesiredAnimationStance(
     return 'dash';
   }
 
+  if (fighter.action === 'guard') {
+    return 'block';
+  }
+
   if (fighter.action === 'jump') {
     return 'jump';
   }
@@ -466,6 +492,194 @@ function getAvailableAnimationStance(
   return manifest.stanceSources.idle.length > 0 ? 'idle' : null;
 }
 
+function getAttackTotalFrames(move: CharacterDefinition['moves'][string]) {
+  return move.startup + move.active + move.recovery;
+}
+
+function isSpecialCinematicPhase(phase: MatchState['fighters'][number]['specialMovePhase']) {
+  return phase != null && phase !== 'follow-through';
+}
+
+function getSpecialBuildUpAnimation(
+  manifest: FighterAssetManifest | undefined,
+  move: CharacterDefinition['moves'][string],
+) {
+  const specialPoseSources = manifest?.stanceSources['special-pose'] ?? [];
+  if (
+    move.specialSequence?.buildUpAnimation === 'special-pose' &&
+    specialPoseSources.length > 0
+  ) {
+    return { frameSources: specialPoseSources, usesDedicatedPose: true };
+  }
+
+  return {
+    frameSources: manifest?.stanceSources.special ?? [],
+    usesDedicatedPose: false,
+  };
+}
+
+function getSpecialBuildUpFrameIndex(
+  fighter: MatchState['fighters'][number],
+  move: CharacterDefinition['moves'][string],
+  frameCount: number,
+  usesDedicatedPose: boolean,
+) {
+  if (frameCount <= 1) {
+    return 0;
+  }
+
+  const totalFrames = Math.max(1, getAttackTotalFrames(move));
+  const specialSequence = move.specialSequence;
+  if (!specialSequence) {
+    return 0;
+  }
+
+  const buildUpDuration = Math.max(1, Math.min(specialSequence.buildUpFrames, totalFrames));
+  const buildUpFrameCount = usesDedicatedPose
+    ? frameCount
+    : Math.min(
+        frameCount,
+        Math.max(1, specialSequence.animationBuildUpFrames ?? buildUpDuration),
+      );
+  const lastBuildUpFrameIndex = Math.max(0, buildUpFrameCount - 1);
+
+  if (
+    fighter.specialMovePhase === 'landing-hold' ||
+    fighter.specialMovePhase === 'pause' ||
+    fighter.specialMovePhase === 'zoom-out'
+  ) {
+    return lastBuildUpFrameIndex;
+  }
+
+  const buildUpProgress = Math.max(
+    0,
+    Math.min(1, fighter.attackFrame / Math.max(1, buildUpDuration)),
+  );
+  return Math.min(
+    lastBuildUpFrameIndex,
+    Math.floor(buildUpProgress * buildUpFrameCount),
+  );
+}
+
+function getSpecialAnimationFrameIndex(
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+  frameCount: number,
+) {
+  const move = fighter.attackId ? definition.moves[fighter.attackId] : definition.moves.special;
+  if (!move || frameCount <= 1) {
+    return 0;
+  }
+
+  const totalFrames = Math.max(1, getAttackTotalFrames(move));
+  const specialSequence = move.specialSequence;
+  if (!specialSequence) {
+    return Math.min(
+      frameCount - 1,
+      Math.floor((fighter.attackFrame / Math.max(1, totalFrames)) * frameCount),
+    );
+  }
+
+  if (specialSequence.animationMode === 'loop') {
+    const loopFrameDuration = Math.max(1, specialSequence.loopFrameDuration ?? 4);
+    return Math.floor(fighter.actionFrames / loopFrameDuration) % frameCount;
+  }
+
+  const buildUpDuration = Math.max(1, Math.min(specialSequence.buildUpFrames, totalFrames));
+  const buildUpFrameCount = Math.min(
+    frameCount,
+    Math.max(1, specialSequence.animationBuildUpFrames ?? buildUpDuration),
+  );
+  const followThroughFrameCount = Math.max(1, frameCount - buildUpFrameCount);
+  const lastBuildUpFrameIndex = Math.max(0, buildUpFrameCount - 1);
+
+  if (
+    fighter.specialMovePhase === 'landing-hold' ||
+    fighter.specialMovePhase === 'pause' ||
+    fighter.specialMovePhase === 'zoom-out'
+  ) {
+    return lastBuildUpFrameIndex;
+  }
+
+  if (fighter.attackFrame <= buildUpDuration || buildUpFrameCount >= frameCount) {
+    const buildUpProgress = Math.max(
+      0,
+      Math.min(1, fighter.attackFrame / Math.max(1, buildUpDuration)),
+    );
+    return Math.min(
+      lastBuildUpFrameIndex,
+      Math.floor(buildUpProgress * buildUpFrameCount),
+    );
+  }
+
+  const followThroughDuration = Math.max(1, totalFrames - buildUpDuration);
+  const followThroughProgress = Math.max(
+    0,
+    Math.min(1, (fighter.attackFrame - buildUpDuration) / followThroughDuration),
+  );
+  return Math.min(
+    frameCount - 1,
+    buildUpFrameCount +
+      Math.min(
+        followThroughFrameCount - 1,
+        Math.floor(followThroughProgress * followThroughFrameCount),
+      ),
+  );
+}
+
+function getActiveSpecialCinematicState(state: MatchState | null) {
+  if (!state || state.status !== 'fighting') {
+    return null;
+  }
+
+  for (const fighter of state.fighters) {
+    if (fighter.action !== 'attack' || !fighter.attackId) {
+      continue;
+    }
+
+    const definition = roster[fighter.fighterId];
+    const move = definition?.moves[fighter.attackId];
+    if (!move?.specialSequence || !isSpecialCinematicPhase(fighter.specialMovePhase)) {
+      continue;
+    }
+
+    const totalFrames = Math.max(1, getAttackTotalFrames(move));
+    const buildUpFrames = Math.max(
+      1,
+      Math.min(move.specialSequence.buildUpFrames, totalFrames),
+    );
+    const zoomOutFrames = Math.max(1, move.specialSequence.zoomOutFrames ?? 1);
+
+    let cameraProgress = 1;
+    switch (fighter.specialMovePhase) {
+      case 'build-up':
+        cameraProgress = Math.max(0, Math.min(1, fighter.attackFrame / buildUpFrames));
+        break;
+      case 'zoom-out':
+        cameraProgress = Math.max(
+          0,
+          Math.min(1, 1 - fighter.specialMovePhaseFrame / zoomOutFrames),
+        );
+        break;
+      default:
+        cameraProgress = 1;
+        break;
+    }
+
+    return {
+      fighter,
+      definition,
+      move,
+      phase: fighter.specialMovePhase,
+      buildUpProgress: cameraProgress,
+      overlayOpacity: cameraProgress,
+      zoomScale: 1 + ((move.specialSequence.zoomScale ?? 1.82) - 1) * cameraProgress,
+    };
+  }
+
+  return null;
+}
+
 function getAnimationFrameIndex(
   fighter: MatchState['fighters'][number],
   definition: CharacterDefinition,
@@ -478,8 +692,14 @@ function getAnimationFrameIndex(
   }
 
   switch (stance) {
-    case 'walk':
-      return Math.floor(matchFrame / 5) % frameCount;
+    case 'walk': {
+      const walkFrame = Math.floor(matchFrame / 5) % frameCount;
+      return fighter.vx * fighter.facing < 0
+        ? frameCount - 1 - walkFrame
+        : walkFrame;
+    }
+    case 'block':
+      return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 5));
     case 'jump':
       if (frameCount >= 5) {
         if (fighter.grounded) {
@@ -520,13 +740,14 @@ function getAnimationFrameIndex(
     case 'hurt':
       return Math.floor(matchFrame / 4) % frameCount;
     case 'ko':
-      return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 8));
+      return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 16));
+    case 'special':
+      return getSpecialAnimationFrameIndex(fighter, definition, frameCount);
     case 'attack1':
-    case 'attack2':
-    case 'special': {
+    case 'attack2': {
       const move = fighter.attackId ? definition.moves[fighter.attackId] : null;
       const totalFrames = move
-        ? move.startup + move.active + move.recovery + 1
+        ? getAttackTotalFrames(move) + 1
         : frameCount;
       return Math.min(
         frameCount - 1,
@@ -547,6 +768,22 @@ function getAnimationTextureKey(
   frameIndex: number,
 ) {
   return `${fighterId}:animation:${stance}:${frameIndex}`;
+}
+
+function getSpecialHoverVisualLift(
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+) {
+  if (fighter.attackId !== 'special' || fighter.specialMovePhase !== 'follow-through') {
+    return 0;
+  }
+
+  const hoverHeight = definition.moves.special?.specialSequence?.hoverHeight;
+  if (definition.moves.special?.specialSequence?.animationMode !== 'loop' || hoverHeight == null) {
+    return 0;
+  }
+
+  return hoverHeight;
 }
 
 function getProjectileTextureKey(sprite: string) {
@@ -739,10 +976,334 @@ function getAiAttackCadenceFrames(button: 'punch' | 'kick' | 'special') {
   }
 }
 
-function createAiInput(state: MatchState): InputState {
+function createFightBotState(): FightBotState {
+  return {
+    dashJumpCooldownUntilFrame: 0,
+    dashJumpSequence: null,
+    projectileDodgeDecisions: {},
+  };
+}
+
+function toAiWorldBox(x: number, y: number, facing: Facing, box: Box): Box {
+  const mirroredX = facing === 1 ? box.x : -(box.x + box.width);
+  return {
+    x: x + mirroredX,
+    y: y + box.y,
+    width: box.width,
+    height: box.height,
+  };
+}
+
+function boxesOverlapVertically(a: Box, b: Box, padding = 0) {
+  return a.y < b.y + b.height + padding && a.y + a.height > b.y - padding;
+}
+
+function getHorizontalBoxGap(a: Box, b: Box) {
+  if (a.x + a.width < b.x) {
+    return b.x - (a.x + a.width);
+  }
+
+  if (b.x + b.width < a.x) {
+    return a.x - (b.x + b.width);
+  }
+
+  return 0;
+}
+
+function pruneFightBotProjectileDecisions(
+  botState: FightBotState,
+  activeProjectiles: MatchState['projectiles'],
+) {
+  const activeProjectileIds = new Set(activeProjectiles.map((projectile) => projectile.id));
+  botState.projectileDodgeDecisions = Object.fromEntries(
+    Object.entries(botState.projectileDodgeDecisions).filter(([projectileId]) =>
+      activeProjectileIds.has(Number(projectileId))
+    ),
+  );
+}
+
+function getFightBotProjectileDodgeDecision(
+  botState: FightBotState,
+  projectileId: number,
+) {
+  const existingDecision = botState.projectileDodgeDecisions[projectileId];
+  if (existingDecision != null) {
+    return existingDecision;
+  }
+
+  const shouldDodge = projectileId % 2 === 0;
+  botState.projectileDodgeDecisions[projectileId] = shouldDodge;
+  return shouldDodge;
+}
+
+function beginFightBotDashJumpSequence(
+  botState: FightBotState,
+  state: MatchState,
+  directionKey: AiDirectionKey,
+  cooldownFrames: number,
+  dodgeProjectileId: number | null = null,
+) {
+  botState.dashJumpSequence = {
+    directionKey,
+    dodgeProjectileId,
+    secondTapFrame: null,
+    step: 'first-tap',
+  };
+  botState.dashJumpCooldownUntilFrame = state.frame + cooldownFrames;
+}
+
+function getFightBotDashJumpInput(
+  state: MatchState,
+  fighter: MatchState['fighters'][number],
+  botState: FightBotState,
+) {
+  const sequence = botState.dashJumpSequence;
+  if (!sequence) {
+    return null;
+  }
+
+  if (
+    state.status !== 'fighting' ||
+    fighter.attackId ||
+    fighter.hitstun > 0 ||
+    !fighter.grounded
+  ) {
+    botState.dashJumpSequence = null;
+    return null;
+  }
+
+  const nextInput = cloneInput();
+  switch (sequence.step) {
+    case 'first-tap':
+      nextInput[sequence.directionKey] = true;
+      sequence.step = 'release';
+      return nextInput;
+    case 'release':
+      sequence.step = 'second-tap';
+      return nextInput;
+    case 'second-tap':
+      nextInput[sequence.directionKey] = true;
+      sequence.secondTapFrame = state.frame;
+      sequence.step = 'jump';
+      return nextInput;
+    case 'jump':
+      if (fighter.action === 'dash' || fighter.dashFramesRemaining > 0) {
+        nextInput[sequence.directionKey] = true;
+        nextInput.up = true;
+        botState.dashJumpSequence = null;
+        return nextInput;
+      }
+
+      if (
+        sequence.secondTapFrame != null &&
+        state.frame - sequence.secondTapFrame > 2
+      ) {
+        botState.dashJumpSequence = null;
+      }
+
+      return nextInput;
+    default:
+      botState.dashJumpSequence = null;
+      return null;
+  }
+}
+
+function getAiProjectileThreat(
+  state: MatchState,
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+) {
+  const hurtboxes = (
+    fighter.grounded ? definition.standingBoxes : definition.jumpingBoxes
+  ).hurtboxes;
+
+  if (!hurtboxes?.length) {
+    return null;
+  }
+
+  const worldHurtboxes = hurtboxes.map((box) =>
+    toAiWorldBox(fighter.x, fighter.y, fighter.facing, box),
+  );
+  let nearestThreat: {
+    framesUntilImpact: number;
+    projectile: MatchState['projectiles'][number];
+  } | null = null;
+
+  for (const projectile of state.projectiles) {
+    if (projectile.ownerSlot === fighter.slot) {
+      continue;
+    }
+
+    const relativeX = fighter.x - projectile.x;
+    if (Math.abs(projectile.vx) <= 0.001 || relativeX * projectile.vx <= 0) {
+      continue;
+    }
+
+    const projectileBox = toAiWorldBox(
+      projectile.x,
+      projectile.y,
+      projectile.facing,
+      projectile.hitbox,
+    );
+    const overlappingHurtboxes = worldHurtboxes.filter((hurtbox) =>
+      boxesOverlapVertically(projectileBox, hurtbox, 18),
+    );
+
+    if (overlappingHurtboxes.length === 0) {
+      continue;
+    }
+
+    const horizontalGap = Math.min(
+      ...overlappingHurtboxes.map((hurtbox) =>
+        getHorizontalBoxGap(projectileBox, hurtbox),
+      ),
+    );
+    const framesUntilImpact = horizontalGap / Math.abs(projectile.vx);
+
+    if (horizontalGap > 170 || framesUntilImpact > 18) {
+      continue;
+    }
+
+    if (
+      !nearestThreat ||
+      framesUntilImpact < nearestThreat.framesUntilImpact
+    ) {
+      nearestThreat = {
+        framesUntilImpact,
+        projectile,
+      };
+    }
+  }
+
+  return nearestThreat;
+}
+
+function getAiMoveFrameHitboxes(
+  move: NonNullable<CharacterDefinition['moves'][string]>,
+  attackFrame: number,
+) {
+  return move.frameBoxes?.[attackFrame]?.hitboxes ?? [];
+}
+
+function applyAiMeleeRangeToHitbox<T extends Box>(
+  move: NonNullable<CharacterDefinition['moves'][string]>,
+  box: T,
+) {
+  if (move.projectile || move.meleeRange == null) {
+    return box;
+  }
+
+  if (move.meleeRange <= box.x) {
+    return {
+      ...box,
+      x: move.meleeRange - 1,
+      width: 1,
+    };
+  }
+
+  return {
+    ...box,
+    width: move.meleeRange - box.x,
+  };
+}
+
+function getAiFighterHurtboxes(
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+) {
+  if (fighter.attackId) {
+    const move = definition.moves[fighter.attackId];
+    const override = move?.frameBoxes?.[fighter.attackFrame]?.hurtboxes;
+    if (override?.length) {
+      return override.map((box) =>
+        toAiWorldBox(fighter.x, fighter.y, fighter.facing, box),
+      );
+    }
+  }
+
+  const source = fighter.grounded ? definition.standingBoxes : definition.jumpingBoxes;
+  return (source.hurtboxes ?? []).map((box) =>
+    toAiWorldBox(fighter.x, fighter.y, fighter.facing, box),
+  );
+}
+
+function getAiMeleeThreat(
+  attacker: MatchState['fighters'][number],
+  attackerDefinition: CharacterDefinition,
+  defender: MatchState['fighters'][number],
+  defenderDefinition: CharacterDefinition,
+) {
+  if (!attacker.attackId) {
+    return null;
+  }
+
+  const move = attackerDefinition.moves[attacker.attackId];
+  if (!move) {
+    return null;
+  }
+
+  const predictedAttackFrame = attacker.attackFrame + 1;
+  const activeStart = move.startup;
+  const activeEnd = move.startup + move.active - 1;
+  if (predictedAttackFrame < activeStart || predictedAttackFrame > activeEnd) {
+    return null;
+  }
+
+  const predictedAttackerX = attacker.x + attacker.vx;
+  const predictedAttackerY = attacker.y + attacker.vy;
+  const defenderHurtboxes = getAiFighterHurtboxes(defender, defenderDefinition);
+  const activeHitboxes = getAiMoveFrameHitboxes(move, predictedAttackFrame);
+  let nearestThreat: {
+    framesUntilImpact: number;
+    horizontalGap: number;
+  } | null = null;
+
+  for (const hitbox of activeHitboxes) {
+    const worldHitbox = toAiWorldBox(
+      predictedAttackerX,
+      predictedAttackerY,
+      attacker.facing,
+      applyAiMeleeRangeToHitbox(move, hitbox),
+    );
+    const overlappingHurtboxes = defenderHurtboxes.filter((hurtbox) =>
+      boxesOverlapVertically(worldHitbox, hurtbox, 12),
+    );
+
+    if (overlappingHurtboxes.length === 0) {
+      continue;
+    }
+
+    const horizontalGap = Math.min(
+      ...overlappingHurtboxes.map((hurtbox) =>
+        getHorizontalBoxGap(worldHitbox, hurtbox),
+      ),
+    );
+
+    if (horizontalGap > 24) {
+      continue;
+    }
+
+    if (!nearestThreat || horizontalGap < nearestThreat.horizontalGap) {
+      nearestThreat = {
+        framesUntilImpact: 1,
+        horizontalGap,
+      };
+    }
+  }
+
+  return nearestThreat;
+}
+
+function createAiInput(state: MatchState, botState: FightBotState): InputState {
   const player = state.fighters[1];
   const target = state.fighters[0];
   const playerDefinition = roster[player.fighterId];
+  const targetDefinition = roster[target.fighterId];
+  if (!playerDefinition || !targetDefinition) {
+    botState.dashJumpSequence = null;
+    return EMPTY_INPUT;
+  }
+
   const punchMove = playerDefinition?.moves.punch;
   const kickMove = playerDefinition?.moves.kick;
   const specialMove = playerDefinition?.moves.special;
@@ -754,7 +1315,15 @@ function createAiInput(state: MatchState): InputState {
     player.attackId ||
     player.hitstun > 0
   ) {
+    botState.dashJumpSequence = null;
     return EMPTY_INPUT;
+  }
+
+  pruneFightBotProjectileDecisions(botState, state.projectiles);
+
+  const sequenceInput = getFightBotDashJumpInput(state, player, botState);
+  if (sequenceInput) {
+    return sequenceInput;
   }
 
   const distance = target.x - player.x;
@@ -772,6 +1341,17 @@ function createAiInput(state: MatchState): InputState {
     punchReady ? meleePunchRange : 0,
   );
   const nextInput = cloneInput();
+  const projectileThreat = getAiProjectileThreat(
+    state,
+    player,
+    playerDefinition,
+  );
+  const meleeThreat = getAiMeleeThreat(
+    target,
+    targetDefinition,
+    player,
+    playerDefinition,
+  );
 
   if (!player.grounded) {
     const canThrowAerialProjectile =
@@ -835,6 +1415,64 @@ function createAiInput(state: MatchState): InputState {
     absoluteDistance >= Math.max(90, jumpAttackRange * 0.82) &&
     absoluteDistance <= jumpAttackRange + 30 &&
     state.frame % 96 === 0;
+  const canStartDashJump =
+    state.frame >= botState.dashJumpCooldownUntilFrame &&
+    player.dashFramesRemaining === 0;
+  const shouldDodgeProjectile =
+    projectileThreat != null &&
+    canStartDashJump &&
+    getFightBotProjectileDodgeDecision(
+      botState,
+      projectileThreat.projectile.id,
+    );
+  const shouldGuardThreat =
+    meleeThreat?.framesUntilImpact === 1 ||
+    (
+      projectileThreat != null &&
+      projectileThreat.framesUntilImpact <= 4 &&
+      !shouldDodgeProjectile
+    );
+
+  if (shouldDodgeProjectile) {
+    const dodgeDirection =
+      absoluteDistance >= 210 ? towardKey : awayKey;
+    beginFightBotDashJumpSequence(
+      botState,
+      state,
+      dodgeDirection,
+      34,
+      projectileThreat.projectile.id,
+    );
+
+    return getFightBotDashJumpInput(state, player, botState) ?? EMPTY_INPUT;
+  }
+
+  if (shouldGuardThreat) {
+    nextInput[awayKey] = true;
+    return nextInput;
+  }
+
+  if (canStartDashJump) {
+    const shouldDashJumpToward =
+      moveToward &&
+      absoluteDistance >= Math.max(170, closeMeleeRange + 72) &&
+      state.frame % 90 === 0;
+    const shouldDashJumpAway =
+      moveAway &&
+      absoluteDistance <= Math.max(220, closeMeleeRange + 64) &&
+      state.frame % 120 === 0;
+
+    if (shouldDashJumpToward || shouldDashJumpAway) {
+      beginFightBotDashJumpSequence(
+        botState,
+        state,
+        shouldDashJumpToward ? towardKey : awayKey,
+        shouldDashJumpToward ? 42 : 54,
+      );
+
+      return getFightBotDashJumpInput(state, player, botState) ?? EMPTY_INPUT;
+    }
+  }
 
   nextInput[towardKey] = moveToward && !moveAway;
   nextInput[awayKey] = moveAway && !moveToward;
@@ -897,10 +1535,36 @@ function renderFighterFallback(
   if (fighter.action === 'dash') {
     graphics.fillStyle(0xffffff, 0.18);
     graphics.fillEllipse(baseX - direction * 34, baseY - 62, 60, 30);
+  } else if (fighter.action === 'guard') {
+    graphics.fillStyle(0xf7f0e0, 0.32);
+    graphics.fillRoundedRect(baseX + direction * 8, baseY - 92, 26, 58, 12);
+    graphics.lineStyle(4, 0x1a1815, 0.72);
+    graphics.strokeRoundedRect(baseX + direction * 8, baseY - 92, 26, 58, 12);
   } else if (fighter.action === 'attack') {
     graphics.fillStyle(0xffffff, 0.35);
     graphics.fillEllipse(baseX + direction * 30, baseY - 70, 54, 26);
   }
+}
+
+function renderGuardOverlay(
+  graphics: any,
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+) {
+  if (fighter.action !== 'guard') {
+    return;
+  }
+
+  const baseY = fighter.y - getDashVisualLift(fighter, definition);
+  const shieldX = fighter.x + fighter.facing * 18;
+  const shieldY = baseY - 63;
+
+  graphics.fillStyle(0xf7f0e0, 0.18);
+  graphics.fillRoundedRect(shieldX, shieldY, 28, 62, 12);
+  graphics.lineStyle(4, 0xfbf5e9, 0.62);
+  graphics.strokeRoundedRect(shieldX, shieldY, 28, 62, 12);
+  graphics.lineStyle(3, 0x1a1815, 0.38);
+  graphics.strokeRoundedRect(shieldX, shieldY, 28, 62, 12);
 }
 
 function renderProjectileFallback(
@@ -987,10 +1651,23 @@ function getCountdownAnnouncement(state: MatchState) {
   };
 }
 
+function hasNewKo(previousState: MatchState | null, nextState: MatchState) {
+  if (nextState.status !== 'round-over' && nextState.status !== 'match-over') {
+    return false;
+  }
+
+  return nextState.fighters.some(
+    (fighter, index) =>
+      fighter.action === 'ko' &&
+      previousState?.fighters[index]?.action !== 'ko',
+  );
+}
+
 export function FightScene(props: FightSceneProps) {
   const screenRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const arenaSceneRef = useRef<any>(null);
+  const fightBotStateRef = useRef<FightBotState>(createFightBotState());
   const keyboardInputRef = useRef<InputState>(cloneInput());
   const pointerInputRef = useRef<InputState>(cloneInput());
   const liveInputRef = useRef<InputState>(cloneInput());
@@ -1015,7 +1692,11 @@ export function FightScene(props: FightSceneProps) {
   const [visualInput, setVisualInput] = useState<InputState>(() =>
     cloneInput(),
   );
+  const [koAnnouncement, setKoAnnouncement] = useState<FightAnnouncement | null>(
+    null,
+  );
   const hasReportedResult = useRef(false);
+  const koAnnouncementTimeoutRef = useRef<number | null>(null);
 
   const opponentDefinition = useMemo(
     () => getFighter(props.opponentId),
@@ -1061,11 +1742,67 @@ export function FightScene(props: FightSceneProps) {
     [controlledFighterDefinition, controlledFighterRuntime],
   );
 
+  const activeSpecialCinematic = useMemo(() => {
+    const activeSpecial = getActiveSpecialCinematicState(hudState);
+    if (!activeSpecial) {
+      return null;
+    }
+
+    const manifest = fighterAssetManifests[activeSpecial.definition.id];
+    const buildUpAnimation = getSpecialBuildUpAnimation(manifest, activeSpecial.move);
+    const frameIndex = getSpecialBuildUpFrameIndex(
+      activeSpecial.fighter,
+      activeSpecial.move,
+      buildUpAnimation.frameSources.length,
+      buildUpAnimation.usesDedicatedPose,
+    );
+    const renderHeight =
+      activeSpecial.definition.sprites.renderHeight ?? defaultFighterRenderHeight;
+    const focusTargetY = activeSpecial.fighter.y - renderHeight * 0.62;
+    const focusedPanX =
+      ((DEFAULT_CONFIG.width * 0.5 - activeSpecial.fighter.x * activeSpecial.zoomScale) /
+        DEFAULT_CONFIG.width) *
+      100;
+    const focusedPanY =
+      ((DEFAULT_CONFIG.height * 0.58 - focusTargetY * activeSpecial.zoomScale) /
+        DEFAULT_CONFIG.height) *
+      100;
+
+    return {
+      ...activeSpecial,
+      frameSource: buildUpAnimation.frameSources[frameIndex] ?? null,
+      focusHeightPx: Math.round(renderHeight * 3.35),
+      panX: `${(focusedPanX * activeSpecial.buildUpProgress).toFixed(3)}%`,
+      panY: `${(focusedPanY * activeSpecial.buildUpProgress).toFixed(3)}%`,
+    };
+  }, [fighterAssetManifests, hudState]);
+
+  const specialCinematicStyle = activeSpecialCinematic
+    ? ({
+        '--fight-special-zoom-scale': `${activeSpecialCinematic.zoomScale}`,
+        '--fight-special-pan-x': activeSpecialCinematic.panX,
+        '--fight-special-pan-y': activeSpecialCinematic.panY,
+        '--fight-special-build-up-progress': `${activeSpecialCinematic.buildUpProgress}`,
+        '--fight-special-focus-height': `${activeSpecialCinematic.focusHeightPx}px`,
+        '--fight-special-overlay-opacity': `${activeSpecialCinematic.overlayOpacity}`,
+      } as CSSProperties)
+    : undefined;
+
+  useEffect(
+    () => () => {
+      if (koAnnouncementTimeoutRef.current !== null) {
+        window.clearTimeout(koAnnouncementTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   const syncVisualInput = () => {
     const nextInput = {
       left: keyboardInputRef.current.left || pointerInputRef.current.left,
       right: keyboardInputRef.current.right || pointerInputRef.current.right,
       up: keyboardInputRef.current.up || pointerInputRef.current.up,
+      guard: false,
       punch: keyboardInputRef.current.punch || pointerInputRef.current.punch,
       kick: keyboardInputRef.current.kick || pointerInputRef.current.kick,
       special:
@@ -1182,6 +1919,12 @@ export function FightScene(props: FightSceneProps) {
     setPlayerSlot(1);
     setTrainingOpponentMode('idle');
     trainingOpponentModeRef.current = 'idle';
+    fightBotStateRef.current = createFightBotState();
+    if (koAnnouncementTimeoutRef.current !== null) {
+      window.clearTimeout(koAnnouncementTimeoutRef.current);
+      koAnnouncementTimeoutRef.current = null;
+    }
+    setKoAnnouncement(null);
     clearInputs();
     hasReportedResult.current = false;
     let destroyed = false;
@@ -1203,9 +1946,30 @@ export function FightScene(props: FightSceneProps) {
       current: createLocalMatch(),
     };
 
+    const showKoAnnouncement = () => {
+      if (destroyed) {
+        return;
+      }
+
+      setKoAnnouncement({
+        eyebrow: '',
+        title: 'K.O.',
+        phase: 'ko',
+      });
+      if (koAnnouncementTimeoutRef.current !== null) {
+        window.clearTimeout(koAnnouncementTimeoutRef.current);
+      }
+      koAnnouncementTimeoutRef.current = window.setTimeout(() => {
+        koAnnouncementTimeoutRef.current = null;
+        setKoAnnouncement((current) =>
+          current?.phase === 'ko' ? null : current,
+        );
+      }, KO_ANNOUNCEMENT_DURATION_MS);
+    };
+
     setHudState(props.mode === 'online' ? null : localState.current);
 
-    const keyMap: Record<string, keyof InputState> = {
+    const keyMap: Record<string, ControlInputKey> = {
       KeyW: 'up',
       KeyA: 'left',
       KeyD: 'right',
@@ -1422,6 +2186,12 @@ export function FightScene(props: FightSceneProps) {
           Array<InstanceType<typeof Phaser.GameObjects.Image>>
         >();
         private simulationAccumulatorMs = 0;
+        private koSlowdownRemainingMs = 0;
+
+        private startKoDramaticBeat() {
+          this.koSlowdownRemainingMs = KO_SLOWDOWN_DURATION_MS;
+          window.setTimeout(showKoAnnouncement, KO_SLOWDOWN_DURATION_MS);
+        }
 
         private destroyProjectileVisual(projectileId: number) {
           const projectileSprite = this.projectileSprites.get(projectileId);
@@ -1582,6 +2352,9 @@ export function FightScene(props: FightSceneProps) {
                 void ensureAssetsByIds(
                   message.state.fighters.map((fighter) => fighter.fighterId),
                 );
+                if (hasNewKo(localState.current, message.state)) {
+                  showKoAnnouncement();
+                }
                 localState.current = message.state;
                 setHudState(message.state);
               } else if (message.type === 'room_state') {
@@ -1621,16 +2394,26 @@ export function FightScene(props: FightSceneProps) {
           }
 
           if (props.mode === 'local' || props.mode === 'training') {
-            this.simulationAccumulatorMs += Math.min(delta, 100);
+            const boundedDelta = Math.min(delta, 100);
+            const scaledDelta =
+              this.koSlowdownRemainingMs > 0
+                ? boundedDelta * KO_SLOWDOWN_TIME_SCALE
+                : boundedDelta;
+            this.koSlowdownRemainingMs = Math.max(
+              0,
+              this.koSlowdownRemainingMs - boundedDelta,
+            );
+            this.simulationAccumulatorMs += scaledDelta;
             let didAdvanceSimulation = false;
 
             while (this.simulationAccumulatorMs >= this.simulationStepMs) {
+              const previousState = localState.current;
               const opponentInput =
                 props.mode === 'training'
                   ? trainingOpponentModeRef.current === 'bot'
-                    ? createAiInput(localState.current)
+                    ? createAiInput(localState.current, fightBotStateRef.current)
                     : EMPTY_INPUT
-                  : createAiInput(localState.current);
+                  : createAiInput(localState.current, fightBotStateRef.current);
               localState.current = stepMatch(
                 localState.current,
                 roster,
@@ -1640,9 +2423,21 @@ export function FightScene(props: FightSceneProps) {
               );
               this.simulationAccumulatorMs -= this.simulationStepMs;
               didAdvanceSimulation = true;
+
+              if (hasNewKo(previousState, localState.current)) {
+                this.startKoDramaticBeat();
+                setHudState(localState.current);
+                break;
+              }
             }
 
-            if (didAdvanceSimulation && localState.current.frame % 2 === 0) {
+            if (
+              didAdvanceSimulation &&
+              (
+                localState.current.frame % 2 === 0 ||
+                getActiveSpecialCinematicState(localState.current)
+              )
+            ) {
               setHudState(localState.current);
             }
           } else if (socket?.readyState === WebSocket.OPEN) {
@@ -1754,7 +2549,9 @@ export function FightScene(props: FightSceneProps) {
               const fighterSprite =
                 existingSprite ??
                 this.add.image(fighter.x, fighter.y + 6, textureKey);
-              const visualLift = getDashVisualLift(fighter, definition);
+              const visualLift =
+                getDashVisualLift(fighter, definition) +
+                getSpecialHoverVisualLift(fighter, definition);
 
               fighterSprite.setTexture(textureKey);
               fighterSprite.setVisible(true);
@@ -1764,6 +2561,7 @@ export function FightScene(props: FightSceneProps) {
               fighterSprite.setFlipX(fighter.facing < 0);
               fighterSprite.setScale(spriteScale);
               this.fighterSprites.set(fighter.slot, fighterSprite);
+              renderGuardOverlay(this.fighterGraphics, fighter, definition);
             } else {
               existingSprite?.setVisible(false);
               renderFighterFallback(this.fighterGraphics, fighter, definition);
@@ -1894,6 +2692,7 @@ export function FightScene(props: FightSceneProps) {
   const countdownAnnouncement = hudState
     ? getCountdownAnnouncement(hudState)
     : null;
+  const fightAnnouncement = koAnnouncement ?? countdownAnnouncement;
 
   const toggleFullscreen = async () => {
     const fullscreenCapableScreen = screenRef.current as FullscreenCapableElement | null;
@@ -1921,7 +2720,13 @@ export function FightScene(props: FightSceneProps) {
   return (
     <div
       ref={screenRef}
-      className={`fight-screen${isPaused ? ' fight-screen-paused' : ''}`}
+      className={
+        `fight-screen${isPaused ? ' fight-screen-paused' : ''}` +
+        `${activeSpecialCinematic ? ' fight-screen-special' : ''}` +
+        `${activeSpecialCinematic?.phase === 'build-up' ? ' fight-screen-special-building' : ''}` +
+        `${activeSpecialCinematic?.phase === 'landing-hold' || activeSpecialCinematic?.phase === 'pause' ? ' fight-screen-special-hold' : ''}`
+      }
+      style={specialCinematicStyle}
       onPointerDown={focusMatch}
     >
       {!isSceneBooting && isFullscreenSupported ? (
@@ -1985,6 +2790,21 @@ export function FightScene(props: FightSceneProps) {
           </div>
         ) : null}
       </div>
+      {!isSceneBooting && activeSpecialCinematic ? (
+        <div
+          className={`fight-special-overlay fight-special-phase-${activeSpecialCinematic.phase}`}
+          aria-hidden="true"
+        >
+          <div className="fight-special-backlight" />
+          {activeSpecialCinematic.frameSource ? (
+            <img
+              src={activeSpecialCinematic.frameSource}
+              alt=""
+              className={`fight-special-focus${activeSpecialCinematic.fighter.facing < 0 ? ' fight-special-focus-flipped' : ''}`}
+            />
+          ) : null}
+        </div>
+      ) : null}
       {!isSceneBooting && hudState ? (
         <FightHud
           state={hudState}
@@ -2016,19 +2836,19 @@ export function FightScene(props: FightSceneProps) {
           </div>
         </div>
       ) : null}
-      {!isSceneBooting && countdownAnnouncement ? (
+      {!isSceneBooting && fightAnnouncement ? (
         <div
-          className={`fight-countdown-overlay fight-countdown-phase-${countdownAnnouncement.phase}`}
+          className={`fight-countdown-overlay fight-countdown-phase-${fightAnnouncement.phase}`}
           aria-live="polite"
         >
           <div className="fight-countdown-panel">
-            {countdownAnnouncement.eyebrow ? (
+            {fightAnnouncement.eyebrow ? (
               <div className="fight-countdown-eyebrow">
-                {countdownAnnouncement.eyebrow}
+                {fightAnnouncement.eyebrow}
               </div>
             ) : null}
             <div className="fight-countdown-title">
-              {countdownAnnouncement.title}
+              {fightAnnouncement.title}
             </div>
           </div>
         </div>
@@ -2061,44 +2881,39 @@ export function FightScene(props: FightSceneProps) {
           aria-hidden="true"
         >
           <div className="fight-controls fight-controls-left">
-            {movementControls.map((row, rowIndex) => (
-              <div
-                key={`movement-${rowIndex}`}
-                className="fight-controls-row"
-              >
-                {row.map((control) => (
-                  <button
-                    key={control.key}
-                    type="button"
-                    className={`fight-control-button${visualInput[control.key] ? ' fight-control-button-active' : ''}`}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      focusMatch();
-                      setInputSourceValue('pointer', control.key, true);
-                    }}
-                    onPointerUp={() =>
-                      setInputSourceValue('pointer', control.key, false)
-                    }
-                    onPointerLeave={() =>
-                      setInputSourceValue('pointer', control.key, false)
-                    }
-                    onPointerCancel={() =>
-                      setInputSourceValue('pointer', control.key, false)
-                    }
-                  >
-                    <span className="fight-control-button-face">
-                      {control.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ))}
+            <div className="fight-controls-row fight-controls-row-movement">
+              {movementControls.map((control) => (
+                <button
+                  key={control.key}
+                  type="button"
+                  className={`fight-control-button fight-control-button-action fight-control-button-movement fight-control-button-movement-${control.key}${visualInput[control.key] ? ' fight-control-button-active' : ''}`}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    focusMatch();
+                    setInputSourceValue('pointer', control.key, true);
+                  }}
+                  onPointerUp={() =>
+                    setInputSourceValue('pointer', control.key, false)
+                  }
+                  onPointerLeave={() =>
+                    setInputSourceValue('pointer', control.key, false)
+                  }
+                  onPointerCancel={() =>
+                    setInputSourceValue('pointer', control.key, false)
+                  }
+                >
+                  <span className="fight-control-button-face">
+                    {control.label}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
           <div className="fight-controls fight-controls-right">
             {attackControls.map((row, rowIndex) => (
               <div
                 key={`attack-${rowIndex}`}
-                className="fight-controls-row"
+                className="fight-controls-row fight-controls-row-action"
               >
                 {row.map((control) => {
                   const cooldown = attackCooldowns[control.key as AttackInputKey] ??
@@ -2120,7 +2935,7 @@ export function FightScene(props: FightSceneProps) {
                     >
                       <button
                         type="button"
-                        className={`fight-control-button${activeClass}${coolingClass}`}
+                        className={`fight-control-button fight-control-button-action${activeClass}${coolingClass}`}
                         aria-disabled={cooldown.cooling}
                         style={cooldownStyle}
                         onPointerDown={(event) => {

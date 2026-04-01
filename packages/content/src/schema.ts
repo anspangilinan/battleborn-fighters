@@ -8,6 +8,7 @@ const hitboxSchema = z.object({
   width: z.number().positive(),
   height: z.number().positive(),
   damage: z.number().int().positive(),
+  chipDamage: z.number().int().nonnegative().optional(),
   hitstun: z.number().int().nonnegative(),
   knockbackX: z.number(),
   launchY: z.number().optional(),
@@ -24,14 +25,41 @@ const projectileSchema = z.object({
   sprite: z.string(),
   tier: z.number().int().positive(),
   spawnFrame: z.number().int().nonnegative().optional(),
+  shotCount: z.number().int().positive().optional(),
+  shotIntervalFrames: z.number().int().positive().optional(),
   offsetX: z.number(),
   offsetY: z.number(),
   speed: z.number().positive(),
+  targeting: z.enum(["forward", "opponent"]).optional(),
   minimumDistanceRatio: z.number().positive().max(1),
   maximumDistanceRatio: z.number().positive().max(1).optional(),
   apexHeight: z.number().nonnegative(),
   landing: z.enum(["origin", "floor"]).optional(),
   hitbox: hitboxSchema,
+});
+
+const botBehaviorSchema = z.object({
+  aggressiveness: z.number().min(0).max(1).optional(),
+  arenaMovement: z.object({
+    preferredDistanceMultiplier: z.number().positive().optional(),
+    approachBias: z.number().min(0).max(1).optional(),
+    retreatBias: z.number().min(0).max(1).optional(),
+    jumpInChance: z.number().min(0).max(1).optional(),
+    dashJumpForwardChance: z.number().min(0).max(1).optional(),
+    dashJumpBackwardChance: z.number().min(0).max(1).optional(),
+  }).optional(),
+  skillChoice: z.object({
+    punchWeight: z.number().nonnegative().optional(),
+    kickWeight: z.number().nonnegative().optional(),
+    specialWeight: z.number().nonnegative().optional(),
+    attackCadenceMultiplier: z.number().positive().optional(),
+  }).optional(),
+  defense: z.object({
+    blockChance: z.number().min(0).max(1).optional(),
+    projectileDodgeChance: z.number().min(0).max(1).optional(),
+    meleeBlockReactionFrames: z.number().int().nonnegative().optional(),
+    projectileBlockReactionFrames: z.number().int().nonnegative().optional(),
+  }).optional(),
 });
 
 export const characterSchema = z.object({
@@ -78,6 +106,21 @@ export const characterSchema = z.object({
     meleeRange: z.number().positive().optional(),
     rootVelocityX: z.number().optional(),
     jumpCancelable: z.boolean().optional(),
+    interruptible: z.boolean().optional(),
+    specialSequence: z.object({
+      buildUpFrames: z.number().int().positive(),
+      animationBuildUpFrames: z.number().int().positive().optional(),
+      buildUpAnimation: z.enum(["special", "special-pose"]).optional(),
+      animationMode: z.enum(["segmented", "loop"]).optional(),
+      loopFrameDuration: z.number().int().positive().optional(),
+      channelMoveSpeed: z.number().positive().optional(),
+      hoverHeight: z.number().nonnegative().optional(),
+      pauseFrames: z.number().int().nonnegative().optional(),
+      zoomOutFrames: z.number().int().nonnegative().optional(),
+      holdUntilGroundedAfterBuildUp: z.boolean().optional(),
+      freezeOpponentDuringBuildUp: z.boolean().optional(),
+      zoomScale: z.number().positive().optional(),
+    }).optional(),
     projectile: projectileSchema.optional(),
     frameBoxes: z.record(
       z.string(),
@@ -88,6 +131,7 @@ export const characterSchema = z.object({
       }),
     ).optional(),
   })),
+  bot: botBehaviorSchema.optional(),
 });
 
 export function validateRoster(roster: CharacterDefinition[]) {

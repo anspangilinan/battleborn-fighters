@@ -1,12 +1,14 @@
 export type PlayerSlot = 1 | 2;
 export type Facing = -1 | 1;
 export type Button = "punch" | "kick" | "special";
-export type FighterAction = "idle" | "walk" | "dash" | "jump" | "attack" | "hit" | "ko";
+export type FighterAction = "idle" | "walk" | "dash" | "jump" | "guard" | "attack" | "hit" | "ko";
+export type SpecialMovePhase = "build-up" | "landing-hold" | "pause" | "zoom-out" | "follow-through";
 
 export interface InputState {
   left: boolean;
   right: boolean;
   up: boolean;
+  guard: boolean;
   punch: boolean;
   kick: boolean;
   special: boolean;
@@ -21,6 +23,7 @@ export interface Box {
 
 export interface HitBox extends Box {
   damage: number;
+  chipDamage?: number;
   hitstun: number;
   knockbackX: number;
   launchY?: number;
@@ -43,22 +46,72 @@ export interface MoveDefinition {
   meleeRange?: number;
   rootVelocityX?: number;
   jumpCancelable?: boolean;
+  interruptible?: boolean;
+  specialSequence?: SpecialSequenceDefinition;
   projectile?: ProjectileDefinition;
   frameBoxes?: Record<number, FrameBoxes>;
+}
+
+export interface SpecialSequenceDefinition {
+  buildUpFrames: number;
+  animationBuildUpFrames?: number;
+  buildUpAnimation?: "special" | "special-pose";
+  animationMode?: "segmented" | "loop";
+  loopFrameDuration?: number;
+  channelMoveSpeed?: number;
+  hoverHeight?: number;
+  pauseFrames?: number;
+  zoomOutFrames?: number;
+  holdUntilGroundedAfterBuildUp?: boolean;
+  freezeOpponentDuringBuildUp?: boolean;
+  zoomScale?: number;
 }
 
 export interface ProjectileDefinition {
   sprite: string;
   tier: number;
   spawnFrame?: number;
+  shotCount?: number;
+  shotIntervalFrames?: number;
   offsetX: number;
   offsetY: number;
   speed: number;
+  targeting?: "forward" | "opponent";
   minimumDistanceRatio: number;
   maximumDistanceRatio?: number;
   apexHeight: number;
   landing?: "origin" | "floor";
   hitbox: HitBox;
+}
+
+export interface BotArenaMovementDefinition {
+  preferredDistanceMultiplier?: number;
+  approachBias?: number;
+  retreatBias?: number;
+  jumpInChance?: number;
+  dashJumpForwardChance?: number;
+  dashJumpBackwardChance?: number;
+}
+
+export interface BotSkillChoiceDefinition {
+  punchWeight?: number;
+  kickWeight?: number;
+  specialWeight?: number;
+  attackCadenceMultiplier?: number;
+}
+
+export interface BotDefenseDefinition {
+  blockChance?: number;
+  projectileDodgeChance?: number;
+  meleeBlockReactionFrames?: number;
+  projectileBlockReactionFrames?: number;
+}
+
+export interface BotBehaviorDefinition {
+  aggressiveness?: number;
+  arenaMovement?: BotArenaMovementDefinition;
+  skillChoice?: BotSkillChoiceDefinition;
+  defense?: BotDefenseDefinition;
 }
 
 export interface CharacterDefinition {
@@ -91,6 +144,7 @@ export interface CharacterDefinition {
   standingBoxes: FrameBoxes;
   jumpingBoxes: FrameBoxes;
   moves: Record<string, MoveDefinition>;
+  bot?: BotBehaviorDefinition;
 }
 
 export interface FighterRuntimeState {
@@ -112,6 +166,8 @@ export interface FighterRuntimeState {
   health: number;
   attackId: string | null;
   attackFrame: number;
+  specialMovePhase: SpecialMovePhase | null;
+  specialMovePhaseFrame: number;
   attackConnected: boolean;
   hitstun: number;
   wins: number;
