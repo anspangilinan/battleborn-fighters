@@ -3,6 +3,8 @@ export type Facing = -1 | 1;
 export type Button = "punch" | "kick" | "special";
 export type FighterAction = "idle" | "walk" | "dash" | "jump" | "guard" | "attack" | "hit" | "ko";
 export type SpecialMovePhase = "build-up" | "landing-hold" | "pause" | "zoom-out" | "follow-through";
+export type MoveAnimationStance = "attack1" | "attack2" | "special";
+export type JuggleState = "airborne" | "recovery";
 
 export interface InputState {
   left: boolean;
@@ -47,6 +49,8 @@ export interface MoveDefinition {
   rootVelocityX?: number;
   jumpCancelable?: boolean;
   interruptible?: boolean;
+  animationStance?: MoveAnimationStance;
+  followUpMoveId?: string;
   specialSequence?: SpecialSequenceDefinition;
   projectile?: ProjectileDefinition;
   frameBoxes?: Record<number, FrameBoxes>;
@@ -62,6 +66,7 @@ export interface SpecialSequenceDefinition {
   hoverHeight?: number;
   pauseFrames?: number;
   zoomOutFrames?: number;
+  completeAnimationDuringZoomOut?: boolean;
   holdUntilGroundedAfterBuildUp?: boolean;
   freezeOpponentDuringBuildUp?: boolean;
   zoomScale?: number;
@@ -73,6 +78,8 @@ export interface ProjectileDefinition {
   spawnFrame?: number;
   shotCount?: number;
   shotIntervalFrames?: number;
+  spawnAnchor?: "attacker" | "opponent";
+  spriteScale?: number;
   offsetX: number;
   offsetY: number;
   speed: number;
@@ -168,7 +175,13 @@ export interface FighterRuntimeState {
   specialMovePhase: SpecialMovePhase | null;
   specialMovePhaseFrame: number;
   attackConnected: boolean;
+  pendingFollowUpMoveId: string | null;
   hitstun: number;
+  juggleState: JuggleState | null;
+  invulnerableFrames: number;
+  comboCount: number;
+  comboOwnerSlot: PlayerSlot | null;
+  comboTimerFrames: number;
   wins: number;
   ready: boolean;
   meter: number;
@@ -183,6 +196,7 @@ export interface ProjectileRuntimeState {
   moveId: string;
   sprite: string;
   tier: number;
+  spriteScale?: number;
   x: number;
   y: number;
   vx: number;

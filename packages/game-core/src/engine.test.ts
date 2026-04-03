@@ -96,6 +96,59 @@ function createOffPathDummy(id: string): CharacterDefinition {
   };
 }
 
+const comboChainFighter: CharacterDefinition = {
+  ...fighter,
+  id: "combo-chain-fighter",
+  name: "Combo Chain Fighter",
+  moves: {
+    ...fighter.moves,
+    punch: {
+      ...fighter.moves.punch,
+      startup: 1,
+      active: 1,
+      recovery: 4,
+      cooldownSeconds: 0,
+      followUpMoveId: "punchFollowUp",
+    },
+    punchFollowUp: {
+      id: "punchFollowUp",
+      label: "Punch Follow Up",
+      button: "punch",
+      startup: 1,
+      active: 1,
+      recovery: 5,
+      cooldownSeconds: 0,
+      animationStance: "attack2",
+      frameBoxes: {
+        1: {
+          hitboxes: [{ x: 12, y: -72, width: 24, height: 16, damage: 65, hitstun: 10, knockbackX: 7 }],
+        },
+      },
+    },
+  },
+};
+
+const juggleLauncherFighter: CharacterDefinition = {
+  ...fighter,
+  id: "juggle-launcher-fighter",
+  name: "Juggle Launcher Fighter",
+  moves: {
+    ...fighter.moves,
+    special: {
+      ...fighter.moves.special,
+      startup: 1,
+      active: 1,
+      recovery: 5,
+      cooldownSeconds: 0,
+      frameBoxes: {
+        1: {
+          hitboxes: [{ x: 18, y: -76, width: 24, height: 18, damage: 90, hitstun: 14, knockbackX: 6, launchY: 8 }],
+        },
+      },
+    },
+  },
+};
+
 const projectileFighter: CharacterDefinition = {
   ...fighter,
   id: "projectile-fighter",
@@ -184,6 +237,41 @@ const cappedProjectileFighter: CharacterDefinition = {
   },
 };
 
+const opponentAnchoredProjectileFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "opponent-anchored-projectile-fighter",
+  name: "Opponent Anchored Projectile Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      label: "Meteor Drop",
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        spawnAnchor: "opponent",
+        offsetX: 0,
+        offsetY: -220,
+        speed: 18,
+        targeting: "opponent",
+        minimumDistanceRatio: 1,
+        maximumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: "origin",
+        hitbox: {
+          x: -20,
+          y: -24,
+          width: 40,
+          height: 40,
+          damage: 80,
+          hitstun: 10,
+          knockbackX: 7,
+          launchY: 4,
+        },
+      },
+    },
+  },
+};
+
 const cinematicSpecialFighter: CharacterDefinition = {
   ...fighter,
   id: "cinematic-special-fighter",
@@ -224,6 +312,54 @@ const cinematicSpecialFighter: CharacterDefinition = {
           damage: 90,
           hitstun: 12,
           knockbackX: 9,
+        },
+      },
+    },
+  },
+};
+
+const cinematicOpponentAnchoredSpecialFighter: CharacterDefinition = {
+  ...fighter,
+  id: "cinematic-opponent-anchored-special-fighter",
+  name: "Cinematic Opponent Anchored Special Fighter",
+  moves: {
+    ...fighter.moves,
+    special: {
+      id: "special",
+      label: "Meteor Drop",
+      button: "special",
+      startup: 10,
+      active: 1,
+      recovery: 18,
+      cooldownSeconds: 0,
+      specialSequence: {
+        buildUpFrames: 10,
+        pauseFrames: 6,
+        zoomOutFrames: 7,
+        completeAnimationDuringZoomOut: true,
+      },
+      projectile: {
+        sprite: "digv/special",
+        tier: 2,
+        spriteScale: 2,
+        spawnFrame: 11,
+        spawnAnchor: "opponent",
+        offsetX: 0,
+        offsetY: -220,
+        speed: 24,
+        targeting: "opponent",
+        minimumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: "origin",
+        hitbox: {
+          x: -22,
+          y: -26,
+          width: 44,
+          height: 44,
+          damage: 120,
+          hitstun: 18,
+          knockbackX: 12,
+          launchY: 7,
         },
       },
     },
@@ -701,6 +837,54 @@ test("aerial specials wait to land before firing their follow-through projectile
   assert.ok(Math.abs(Math.hypot(state.projectiles[0].vx, state.projectiles[0].vy) - 20) < 0.001);
 });
 
+test("cinematic opponent-anchored specials spawn only after pause and zoom complete", () => {
+  const roster = {
+    [cinematicOpponentAnchoredSpecialFighter.id]: cinematicOpponentAnchoredSpecialFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(
+    roster,
+    cinematicOpponentAnchoredSpecialFighter.id,
+    fighter.id,
+  );
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].moveCooldownFrames.special = 0;
+  state.fighters[0].x = 220;
+  state.fighters[1].x = 860;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    EMPTY_INPUT,
+  );
+
+  for (let index = 0; index < 40 && state.fighters[0].specialMovePhase !== "follow-through"; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+    assert.equal(state.projectiles.length, 0);
+  }
+
+  assert.equal(state.fighters[0].specialMovePhase, "follow-through");
+  assert.equal(state.projectiles.length, 0);
+
+  const opponentX = state.fighters[1].x;
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.projectiles.length, 1);
+  assert.ok(Math.abs(state.projectiles[0].x - opponentX) < 0.001);
+  assert.ok(Math.abs(state.projectiles[0].vx) < 0.001);
+  assert.equal(state.projectiles[0].spriteScale, 2);
+  assert.ok(state.projectiles[0].vy > 0);
+
+  for (let index = 0; index < 20 && state.fighters[1].health === fighter.stats.maxHealth; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 120);
+  assert.ok(state.events.some((entry) => entry.includes("landed Meteor Drop")));
+});
+
 test("fighters can dash with a quick double tap", () => {
   const roster = { [fighter.id]: fighter };
   let state = createMatchState(roster, fighter.id, fighter.id);
@@ -974,6 +1158,41 @@ test("projectile punches spawn an arcing shot that can hit at range", () => {
 
   assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 55);
   assert.ok(state.events.some((entry) => entry.includes("landed Bolt Shot")));
+});
+
+test("opponent-anchored projectiles can drop straight down onto the defender", () => {
+  const roster = {
+    [opponentAnchoredProjectileFighter.id]: opponentAnchoredProjectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, opponentAnchoredProjectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 180;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ punch: true }),
+    EMPTY_INPUT,
+  );
+
+  for (let index = 0; index < 8 && state.projectiles.length === 0; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.projectiles.length, 1);
+  assert.ok(Math.abs(state.projectiles[0].x - state.fighters[1].x) < 0.001);
+  assert.ok(Math.abs(state.projectiles[0].vx) < 0.001);
+  assert.ok(state.projectiles[0].vy > 0);
+
+  for (let index = 0; index < 30 && state.fighters[1].health === fighter.stats.maxHealth; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 80);
+  assert.ok(state.events.some((entry) => entry.includes("landed Meteor Drop")));
 });
 
 test("guarding a projectile applies default chip damage only", () => {
@@ -1282,4 +1501,111 @@ test("higher-tier projectiles break lower-tier projectiles on contact", () => {
 
   assert.equal(state.projectiles.length, 1);
   assert.equal(state.projectiles[0].tier, 2);
+});
+
+test("punch follow-ups unlock on hit and play on the next punch press", () => {
+  const roster = {
+    [comboChainFighter.id]: comboChainFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, comboChainFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 330;
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[0].pendingFollowUpMoveId, "punchFollowUp");
+
+  for (let index = 0; index < 12 && state.fighters[0].attackId; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[0].attackId, null);
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+
+  assert.equal(state.fighters[0].attackId, "punchFollowUp");
+  assert.equal(state.fighters[0].pendingFollowUpMoveId, null);
+});
+
+test("combo counts start at two hits and expire after half a second without another hit", () => {
+  const roster = {
+    [comboChainFighter.id]: comboChainFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, comboChainFighter.id, fighter.id);
+  const comboTimeoutFrames = Math.round(FPS * 0.5);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 330;
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  for (let index = 0; index < 12 && state.fighters[0].attackId; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 330;
+  state.fighters[1].vx = 0;
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].comboCount, 2);
+  assert.equal(state.fighters[1].comboOwnerSlot, 1);
+
+  for (let index = 0; index < comboTimeoutFrames; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].comboCount, 0);
+  assert.equal(state.fighters[1].comboOwnerSlot, null);
+});
+
+test("juggle launches drop into invulnerable recovery before control returns", () => {
+  const roster = {
+    [juggleLauncherFighter.id]: juggleLauncherFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, juggleLauncherFighter.id, fighter.id);
+  const recoveryFrames = Math.round(FPS * 0.5);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 330;
+  state.fighters[0].moveCooldownFrames.special = 0;
+
+  state = stepMatch(state, roster, input({ special: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].juggleState, "airborne");
+  assert.equal(state.fighters[1].comboCount, 1);
+
+  for (let index = 0; index < 180 && state.fighters[1].juggleState !== "recovery"; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].juggleState, "recovery");
+  assert.equal(state.fighters[1].invulnerableFrames, recoveryFrames);
+  assert.equal(state.fighters[1].comboCount, 0);
+
+  const healthBeforeRecoveryHit = state.fighters[1].health;
+  state = stepMatch(state, roster, input({ punch: true }), input({ punch: true }));
+
+  assert.equal(state.fighters[1].attackId, null);
+  assert.equal(state.fighters[1].health, healthBeforeRecoveryHit);
+
+  for (let index = 0; index < recoveryFrames; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].juggleState, null);
+  state = stepMatch(state, roster, EMPTY_INPUT, input({ punch: true }));
+  assert.equal(state.fighters[1].attackId, "punch");
 });

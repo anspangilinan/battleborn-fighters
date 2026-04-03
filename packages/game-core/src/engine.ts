@@ -19,6 +19,9 @@ const DEFAULT_CHIP_DAMAGE_RATIO = 0.05;
 const BLOCK_MELEE_THREAT_GAP = 22;
 const BLOCK_PROJECTILE_THREAT_FRAMES = 4;
 const ROUND_OVER_MIN_FRAMES = FPS * 3;
+const COMBO_TIMEOUT_FRAMES = Math.round(FPS * 0.5);
+const JUGGLE_DROP_RECOVERY_FRAMES = Math.round(FPS * 0.5);
+const JUGGLE_GRAVITY_MULTIPLIER = 0.68;
 
 export const DEFAULT_CONFIG: MatchConfig = {
   width: 960,
@@ -135,7 +138,13 @@ function createFighterState(
     specialMovePhase: null,
     specialMovePhaseFrame: 0,
     attackConnected: false,
+    pendingFollowUpMoveId: null,
     hitstun: 0,
+    juggleState: null,
+    invulnerableFrames: 0,
+    comboCount: 0,
+    comboOwnerSlot: null,
+    comboTimerFrames: 0,
     wins: 0,
     ready: false,
     meter: 0,
@@ -322,6 +331,103 @@ function shouldAdvanceRoundOver(
     hasFreshInput(inputB, state.fighters[1].lastInput);
 }
 
+function clearComboState(fighter: FighterRuntimeState) {
+  fighter.comboCount = 0;
+  fighter.comboOwnerSlot = null;
+  fighter.comboTimerFrames = 0;
+}
+
+function tickComboState(fighter: FighterRuntimeState) {
+  if (fighter.comboTimerFrames <= 0) {
+    return;
+  }
+
+  fighter.comboTimerFrames = Math.max(0, fighter.comboTimerFrames - 1);
+  if (fighter.comboTimerFrames === 0) {
+    clearComboState(fighter);
+  }
+}
+
+function registerComboHit(
+  attacker: FighterRuntimeState,
+  defender: FighterRuntimeState,
+) {
+  if (
+    defender.comboOwnerSlot === attacker.slot &&
+    defender.comboCount > 0 &&
+    defender.comboTimerFrames > 0
+  ) {
+    defender.comboCount += 1;
+  } else {
+    defender.comboOwnerSlot = attacker.slot;
+    defender.comboCount = 1;
+  }
+
+  defender.comboTimerFrames = COMBO_TIMEOUT_FRAMES;
+}
+
+function clearAttackState(fighter: FighterRuntimeState) {
+  fighter.attackId = null;
+  fighter.attackFrame = 0;
+  fighter.specialMovePhase = null;
+  fighter.specialMovePhaseFrame = 0;
+  fighter.attackConnected = false;
+}
+
+function interruptAttack(fighter: FighterRuntimeState) {
+  clearAttackState(fighter);
+  fighter.pendingFollowUpMoveId = null;
+}
+
+function getRequestedAttackButton(input: InputState, lastInput: InputState) {
+  if (input.special && !lastInput.special) {
+    return "special" as const;
+  }
+
+  if (input.kick && !lastInput.kick) {
+    return "kick" as const;
+  }
+
+  if (input.punch && !lastInput.punch) {
+    return "punch" as const;
+  }
+
+  return null;
+}
+
+function getDefaultMoveForButton(
+  definition: CharacterDefinition,
+  button: "punch" | "kick" | "special",
+) {
+  if (button === "special") {
+    return definition.moves.special;
+  }
+
+  if (button === "kick") {
+    return definition.moves.kick;
+  }
+
+  return definition.moves.punch;
+}
+
+function shouldEnterJuggle(
+  defender: FighterRuntimeState,
+  launchY: number,
+) {
+  return launchY > 0 || defender.juggleState === "airborne" || !defender.grounded;
+}
+
+function unlockFollowUpMove(
+  attacker: FighterRuntimeState,
+  move: CharacterDefinition["moves"][string] | undefined,
+) {
+  if (!move?.followUpMoveId) {
+    return;
+  }
+
+  attacker.pendingFollowUpMoveId = move.followUpMoveId;
+}
+
 function updateFighter(
   state: MatchState,
   fighter: FighterRuntimeState,
@@ -339,10 +445,28 @@ function updateFighter(
   const previousAction = fighter.action;
   fighter.lastTapFrame = Math.min(fighter.lastTapFrame + 1, DASH_TAP_WINDOW_FRAMES + 1);
   tickMoveCooldowns(fighter, definition);
+  tickComboState(fighter);
   const activeMove = fighter.attackId ? definition.moves[fighter.attackId] : null;
+  const recoveringFromJuggle = fighter.juggleState === "recovery" && fighter.invulnerableFrames > 0;
 
-  if (fighter.health <= 0) {
+  if (recoveringFromJuggle) {
+    interruptAttack(fighter);
     cancelDash(fighter);
+    fighter.action = "idle";
+    fighter.vx = 0;
+    fighter.vy = 0;
+    fighter.grounded = true;
+    fighter.hitstun = 0;
+    fighter.invulnerableFrames = Math.max(0, fighter.invulnerableFrames - 1);
+    if (fighter.invulnerableFrames === 0) {
+      fighter.juggleState = null;
+    }
+  } else if (fighter.health <= 0) {
+    interruptAttack(fighter);
+    cancelDash(fighter);
+    fighter.juggleState = null;
+    fighter.invulnerableFrames = 0;
+    clearComboState(fighter);
     fighter.action = "ko";
     fighter.vx = 0;
     fighter.hitstun = 0;
@@ -360,6 +484,10 @@ function updateFighter(
       updateSpecialChannelMovement(fighter, definition, activeMove, input);
     }
     advanceAttack(state, fighter, opponent, definition, opponentDefinition, config);
+  } else if (fighter.juggleState === "airborne") {
+    cancelDash(fighter);
+    fighter.action = "hit";
+    fighter.vx *= 0.82;
   } else if (state.status === "fighting") {
     maybeStartAttack(fighter, definition, input);
     if (!fighter.attackId) {
@@ -372,22 +500,34 @@ function updateFighter(
   }
 
   if (!fighter.grounded) {
-    fighter.vy += definition.stats.movement.gravity;
+    const gravityMultiplier = fighter.juggleState === "airborne"
+      ? JUGGLE_GRAVITY_MULTIPLIER
+      : 1;
+    fighter.vy += definition.stats.movement.gravity * gravityMultiplier;
   }
 
   fighter.x += fighter.vx;
   fighter.y += fighter.vy;
 
   if (fighter.y >= config.groundY) {
+    const landedThisFrame = !fighter.grounded;
     fighter.y = config.groundY;
     fighter.vy = 0;
     fighter.grounded = true;
-    if (fighter.action === "jump") {
+    if (fighter.juggleState === "airborne" && landedThisFrame && fighter.health > 0) {
+      fighter.juggleState = "recovery";
+      fighter.invulnerableFrames = JUGGLE_DROP_RECOVERY_FRAMES;
+      fighter.action = "idle";
+      fighter.vx = 0;
+      clearComboState(fighter);
+    } else if (fighter.action === "jump") {
       fighter.action = Math.abs(fighter.vx) > 0.2 ? "walk" : "idle";
     }
   } else {
     fighter.grounded = false;
-    if (!fighter.attackId && fighter.hitstun === 0 && fighter.action !== "dash") {
+    if (fighter.juggleState === "airborne") {
+      fighter.action = "hit";
+    } else if (!fighter.attackId && fighter.hitstun === 0 && fighter.action !== "dash") {
       fighter.action = "jump";
     }
   }
@@ -404,16 +544,17 @@ function updateFighter(
 }
 
 function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDefinition, input: InputState) {
-  const pressedSpecial = input.special && !fighter.lastInput.special;
-  const pressedKick = input.kick && !fighter.lastInput.kick;
-  const pressedPunch = input.punch && !fighter.lastInput.punch;
-  const move = pressedSpecial
-    ? definition.moves.special
-    : pressedKick
-      ? definition.moves.kick
-      : pressedPunch
-        ? definition.moves.punch
-        : null;
+  const requestedButton = getRequestedAttackButton(input, fighter.lastInput);
+  if (!requestedButton) {
+    return;
+  }
+
+  const pendingMove = fighter.pendingFollowUpMoveId
+    ? definition.moves[fighter.pendingFollowUpMoveId]
+    : null;
+  const move = pendingMove?.button === requestedButton
+    ? pendingMove
+    : getDefaultMoveForButton(definition, requestedButton);
 
   if (!move) {
     return;
@@ -423,6 +564,7 @@ function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDef
     return;
   }
 
+  fighter.pendingFollowUpMoveId = null;
   fighter.attackId = move.id;
   fighter.attackFrame = 0;
   setSpecialMovePhase(fighter, move.specialSequence ? "build-up" : null);
@@ -541,11 +683,7 @@ function updateSpecialChannelMovement(
 }
 
 function finishAttack(fighter: FighterRuntimeState) {
-  fighter.attackId = null;
-  fighter.attackFrame = 0;
-  fighter.specialMovePhase = null;
-  fighter.specialMovePhaseFrame = 0;
-  fighter.attackConnected = false;
+  clearAttackState(fighter);
   fighter.action = Math.abs(fighter.vx) > 0.1 ? "walk" : "idle";
 }
 
@@ -559,10 +697,7 @@ function advanceAttack(
 ) {
   const move = definition.moves[fighter.attackId ?? ""];
   if (!move) {
-    fighter.specialMovePhase = null;
-    fighter.specialMovePhaseFrame = 0;
-    fighter.attackId = null;
-    fighter.attackFrame = 0;
+    clearAttackState(fighter);
     fighter.action = "idle";
     return;
   }
@@ -702,8 +837,13 @@ function maybeSpawnProjectile(
   const maximumDistance = projectile.maximumDistanceRatio == null
     ? undefined
     : config.width * projectile.maximumDistanceRatio;
-  const spawnX = fighter.x + fighter.facing * projectile.offsetX;
-  const spawnY = fighter.y + projectile.offsetY;
+  const opponentAimPoint = getFighterAimPoint(opponent, opponentDefinition);
+  const spawnX = projectile.spawnAnchor === "opponent"
+    ? opponentAimPoint.x + projectile.offsetX
+    : fighter.x + fighter.facing * projectile.offsetX;
+  const spawnY = projectile.spawnAnchor === "opponent"
+    ? opponentAimPoint.y + projectile.offsetY
+    : fighter.y + projectile.offsetY;
 
   let velocityX = projectile.speed * fighter.facing;
   let velocityY = 0;
@@ -711,9 +851,8 @@ function maybeSpawnProjectile(
   let facing = fighter.facing;
 
   if (projectile.targeting === "opponent") {
-    const targetPoint = getFighterAimPoint(opponent, opponentDefinition);
-    const deltaX = targetPoint.x - spawnX;
-    const deltaY = targetPoint.y - spawnY;
+    const deltaX = opponentAimPoint.x - spawnX;
+    const deltaY = opponentAimPoint.y - spawnY;
     const magnitude = Math.max(0.0001, Math.hypot(deltaX, deltaY));
     velocityX = (deltaX / magnitude) * projectile.speed;
     velocityY = (deltaY / magnitude) * projectile.speed;
@@ -740,6 +879,7 @@ function maybeSpawnProjectile(
     moveId: move.id,
     sprite: projectile.sprite,
     tier: projectile.tier,
+    spriteScale: projectile.spriteScale,
     x: spawnX,
     y: spawnY,
     vx: velocityX,
@@ -1005,6 +1145,8 @@ function isGroundedNeutralState(fighter: FighterRuntimeState) {
   return fighter.grounded &&
     fighter.health > 0 &&
     fighter.hitstun === 0 &&
+    fighter.invulnerableFrames === 0 &&
+    fighter.juggleState == null &&
     !fighter.attackId &&
     fighter.action !== "dash" &&
     fighter.action !== "jump" &&
@@ -1175,20 +1317,38 @@ function resolveHits(
       defender.vx = 0;
       defender.vy = 0;
       defender.grounded = true;
+      defender.juggleState = null;
+      defender.invulnerableFrames = 0;
       defender.action = defender.health <= 0 ? "ko" : "guard";
       attacker.attackConnected = true;
+      unlockFollowUpMove(attacker, move);
       attacker.meter = Math.min(100, attacker.meter + 12);
       state.events.push(`${defender.name} blocked ${move.label}`);
       return;
     }
 
+    interruptAttack(defender);
     defender.health = Math.max(0, defender.health - hitbox.damage);
     defender.hitstun = hitbox.hitstun;
     defender.vx = hitbox.knockbackX * attacker.facing;
     defender.vy = -(hitbox.launchY ?? 0);
     defender.grounded = defender.vy === 0;
-    defender.action = defender.health <= 0 ? "ko" : "hit";
+    if (defender.health <= 0) {
+      defender.juggleState = null;
+      defender.invulnerableFrames = 0;
+      clearComboState(defender);
+      defender.action = "ko";
+    } else {
+      const launchY = hitbox.launchY ?? 0;
+      defender.juggleState = shouldEnterJuggle(defender, launchY)
+        ? "airborne"
+        : null;
+      defender.invulnerableFrames = 0;
+      defender.action = "hit";
+      registerComboHit(attacker, defender);
+    }
     attacker.attackConnected = true;
+    unlockFollowUpMove(attacker, move);
     attacker.meter = Math.min(100, attacker.meter + 12);
     state.events.push(`${attacker.name} landed ${move.label}`);
     return;
@@ -1322,20 +1482,38 @@ function resolveProjectileHits(
       defender.vx = 0;
       defender.vy = 0;
       defender.grounded = true;
+      defender.juggleState = null;
+      defender.invulnerableFrames = 0;
       defender.action = defender.health <= 0 ? "ko" : "guard";
+      unlockFollowUpMove(attacker, move);
       if (move) {
         state.events.push(`${defender.name} blocked ${move.label}`);
       }
       continue;
     }
 
+    interruptAttack(defender);
     defender.health = Math.max(0, defender.health - projectile.hitbox.damage);
     defender.hitstun = projectile.hitbox.hitstun;
     defender.vx = projectile.hitbox.knockbackX * projectile.facing;
     defender.vy = -(projectile.hitbox.launchY ?? 0);
     defender.grounded = defender.vy === 0;
-    defender.action = defender.health <= 0 ? "ko" : "hit";
+    if (defender.health <= 0) {
+      defender.juggleState = null;
+      defender.invulnerableFrames = 0;
+      clearComboState(defender);
+      defender.action = "ko";
+    } else {
+      const launchY = projectile.hitbox.launchY ?? 0;
+      defender.juggleState = shouldEnterJuggle(defender, launchY)
+        ? "airborne"
+        : null;
+      defender.invulnerableFrames = 0;
+      defender.action = "hit";
+      registerComboHit(attacker, defender);
+    }
     attacker.meter = Math.min(100, attacker.meter + 12);
+    unlockFollowUpMove(attacker, move);
     if (move) {
       state.events.push(`${attacker.name} landed ${move.label}`);
     }
@@ -1345,7 +1523,7 @@ function resolveProjectileHits(
 }
 
 function getHurtboxes(fighter: FighterRuntimeState, definition: CharacterDefinition): Box[] {
-  if (fighter.action === "dash") {
+  if (fighter.action === "dash" || fighter.invulnerableFrames > 0) {
     return [];
   }
 
