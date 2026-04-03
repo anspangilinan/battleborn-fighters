@@ -12,7 +12,7 @@ const charybdis = localFont({
 
 export const metadata: Metadata = {
   title: "Battleborn Fighters",
-  description: "2D browser fighter with local matches, training, and online rooms.",
+  description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon.ico",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Battleborn Fighters",
-    description: "2D browser fighter with local matches, training, and online rooms.",
+    description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
     images: [
       {
         url: "/fighters-pixel-logo.png",
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Battleborn Fighters",
-    description: "2D browser fighter with local matches, training, and online rooms.",
+    description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
     images: ["/fighters-pixel-logo.png"],
   },
 };
