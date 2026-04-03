@@ -2,9 +2,9 @@ Missing elements
 
 - [ ] Images
    - [x] Base characters
-   - [ ] Splash screen
-   - [ ] Versus, Round 1, Round 2, Round 3, Fight, Knockdown, You Win, You Lose, Gameover 
-   - [ ] Special move BG
+   - [x] Splash screen
+   - [x] Versus, Round 1, Round 2, Round 3, Fight, Knockdown, You Win, You Lose, Gameover 
+   - [x] Special move BG
 - [ ] Sound design
   - [ ] BGM
   - [ ] Generic combat SFX
