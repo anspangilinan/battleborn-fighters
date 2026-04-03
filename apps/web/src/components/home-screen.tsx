@@ -1,10 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
 
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
+import { MenuControlsHint } from "@/components/menu-controls";
+import {
+  getWrappedIndex,
+  isMenuBackKey,
+  isMenuConfirmKey,
+  isMenuNextKey,
+  isMenuPreviousKey,
+} from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
 const MAX_IDLE_FRAME_SCAN = 24;
@@ -209,11 +218,15 @@ const menuEntries: MenuEntry[] = [
 ];
 
 export function HomeScreen() {
+  const router = useRouter();
   const [stage, setStage] = useState<HomeScreenStage>("password");
   const [isAccessResolved, setIsAccessResolved] = useState(false);
   const [menuPair, setMenuPair] = useState<[string, string]>(() => pickRandomMenuPair());
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [selectedMenuIndex, setSelectedMenuIndex] = useState(() =>
+    menuEntries.findIndex((entry) => !entry.disabled),
+  );
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const leftFighter = useMemo(
@@ -274,6 +287,7 @@ export function HomeScreen() {
       return;
     }
 
+    setSelectedMenuIndex(menuEntries.findIndex((entry) => !entry.disabled));
     setMenuPair((previousPair) => pickRandomMenuPair(previousPair));
     const interval = window.setInterval(() => {
       setMenuPair((previousPair) => pickRandomMenuPair(previousPair));
@@ -283,6 +297,56 @@ export function HomeScreen() {
       window.clearInterval(interval);
     };
   }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "menu") {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) {
+        return;
+      }
+
+      if (event.code === "Escape" || isMenuBackKey(event)) {
+        event.preventDefault();
+        setStage("title");
+        return;
+      }
+
+      if (isMenuConfirmKey(event)) {
+        const entry = menuEntries[selectedMenuIndex];
+        if (!entry || entry.disabled) {
+          return;
+        }
+
+        event.preventDefault();
+        router.push(entry.href);
+        return;
+      }
+
+      const delta = isMenuPreviousKey(event) ? -1 : isMenuNextKey(event) ? 1 : 0;
+      if (delta === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      let nextIndex = selectedMenuIndex;
+      for (let attempt = 0; attempt < menuEntries.length; attempt += 1) {
+        nextIndex = getWrappedIndex(nextIndex, delta, menuEntries.length);
+        if (!menuEntries[nextIndex]?.disabled) {
+          setSelectedMenuIndex(nextIndex);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [router, selectedMenuIndex, stage]);
 
   const submitPassword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -378,7 +442,7 @@ export function HomeScreen() {
               key={entry.label}
               href={entry.href}
               disabled={entry.disabled}
-              className="landing-menu-link"
+              className={`landing-menu-link${index === selectedMenuIndex ? " arcade-menu-item-active" : ""}`}
               style={{ animationDelay: `${index * 120}ms` }}
             >
               {entry.label}
@@ -388,6 +452,7 @@ export function HomeScreen() {
 
         <MenuCharacterDisplay fighter={rightFighter} side="right" />
       </div>
+      <MenuControlsHint />
     </main>
   );
 }

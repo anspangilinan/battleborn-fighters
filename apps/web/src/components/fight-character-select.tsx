@@ -7,6 +7,17 @@ import { fighterRoster } from "@battleborn/content";
 
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
 import { FightDisplayName } from "@/components/fight-display-name";
+import { MenuControlsHint } from "@/components/menu-controls";
+import { arenas, defaultArenaId, getArena, isArenaId, type ArenaDefinition } from "@/lib/arenas";
+import {
+  getWrappedIndex,
+  isMenuBackKey,
+  isMenuConfirmKey,
+  isMenuDownKey,
+  isMenuLeftKey,
+  isMenuRightKey,
+  isMenuUpKey,
+} from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
 const MAX_IDLE_FRAME_SCAN = 24;
@@ -16,11 +27,21 @@ type FightCharacterSelectProps = {
   mode: "local" | "training";
   initialFighterId?: string;
   initialOpponentId?: string;
+  initialArenaId?: string;
+  initialStep?: FightCharacterSelectStep;
 };
+
+type FightCharacterSelectStep = "fighters" | "stage";
 
 type CharacterPreviewProps = {
   fighter: (typeof fighters)[number];
   facing: "left" | "right";
+};
+
+type StageOptionCardProps = {
+  arena: ArenaDefinition;
+  onSelect: () => void;
+  selected: boolean;
 };
 
 function toAssetSegment(value: string) {
@@ -196,12 +217,52 @@ function CharacterPreview({ fighter, facing }: CharacterPreviewProps) {
   );
 }
 
+function StageOptionCard({ arena, onSelect, selected }: StageOptionCardProps) {
+  return (
+    <button
+      type="button"
+      className={`fight-stage-card${selected ? " fight-stage-card-selected" : ""}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+      >
+      <img src={arena.backgroundPath} alt={arena.label} className="fight-stage-card-preview" />
+      <div className="fight-stage-card-scrim" />
+      <div className="fight-stage-card-copy">
+        <div className="fight-stage-card-name">{arena.label}</div>
+      </div>
+    </button>
+  );
+}
+
+function buildFightHref(
+  mode: "local" | "training",
+  fighterId: string,
+  opponentId: string,
+  arenaId: string,
+) {
+  const params = new URLSearchParams({
+    mode,
+    fighter: fighterId,
+    arena: arenaId,
+  });
+
+  if (mode === "training") {
+    params.set("opponent", opponentId);
+  }
+
+  return `/fight?${params.toString()}`;
+}
+
 export function FightCharacterSelect({
   mode,
   initialFighterId,
   initialOpponentId,
+  initialArenaId,
+  initialStep = "fighters",
 }: FightCharacterSelectProps) {
   const router = useRouter();
+  const [step, setStep] = useState<FightCharacterSelectStep>(initialStep);
+  const [activeRoster, setActiveRoster] = useState<"fighter" | "opponent">("fighter");
   const [selectedFighterId, setSelectedFighterId] = useState(() =>
     initialFighterId && fighterRoster[initialFighterId] ? initialFighterId : fighters[0]?.id ?? "",
   );
@@ -209,6 +270,9 @@ export function FightCharacterSelect({
     initialOpponentId && fighterRoster[initialOpponentId]
       ? initialOpponentId
       : fighters.find((fighter) => fighter.id !== initialFighterId)?.id ?? fighters[0]?.id ?? "",
+  );
+  const [selectedArenaId, setSelectedArenaId] = useState(() =>
+    initialArenaId && isArenaId(initialArenaId) ? initialArenaId : defaultArenaId,
   );
   const [headshots, setHeadshots] = useState<Record<string, string | null>>({});
 
@@ -220,6 +284,26 @@ export function FightCharacterSelect({
     () => fighters.find((fighter) => fighter.id === selectedOpponentId) ?? fighters[1] ?? fighters[0],
     [selectedOpponentId],
   );
+  const selectedArena = useMemo(() => getArena(selectedArenaId), [selectedArenaId]);
+  const ctaLabel = step === "fighters"
+    ? "Select Stage"
+    : mode === "training"
+      ? "Start Training"
+      : "Start Fight";
+  const ctaHref = selectedFighter && selectedOpponent && step === "stage"
+    ? buildFightHref(
+        mode,
+        selectedFighter.id,
+        selectedOpponent.id,
+        selectedArena.id,
+      )
+    : undefined;
+  const matchupLabel = mode === "training"
+    ? `${selectedFighter?.name ?? ""} vs ${selectedOpponent?.name ?? ""}`
+    : `${selectedFighter?.name ?? ""} vs Random`;
+  const matchupHint = mode === "training"
+    ? "Matchup locked. Pick the arena."
+    : "Opponent is rolled when the fight starts.";
 
   useEffect(() => {
     let cancelled = false;
@@ -245,12 +329,105 @@ export function FightCharacterSelect({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.repeat) {
+      if (event.repeat) {
         return;
       }
 
-      event.preventDefault();
-      router.push("/");
+      if (event.code === "Escape" || isMenuBackKey(event)) {
+        event.preventDefault();
+        if (step === "stage") {
+          setStep("fighters");
+          return;
+        }
+
+        router.push("/");
+        return;
+      }
+
+      if (step === "fighters") {
+        if (mode === "training") {
+          if (isMenuLeftKey(event)) {
+            event.preventDefault();
+            setActiveRoster("fighter");
+            return;
+          }
+
+          if (isMenuRightKey(event)) {
+            event.preventDefault();
+            setActiveRoster("opponent");
+            return;
+          }
+        }
+
+        if (isMenuUpKey(event) || (mode !== "training" && isMenuLeftKey(event))) {
+          event.preventDefault();
+          const currentId = activeRoster === "opponent" ? selectedOpponentId : selectedFighterId;
+          const currentIndex = fighters.findIndex((fighter) => fighter.id === currentId);
+          const nextIndex = getWrappedIndex(currentIndex, -1, fighters.length);
+          const nextId = fighters[nextIndex]?.id;
+          if (!nextId) {
+            return;
+          }
+
+          if (activeRoster === "opponent" && mode === "training") {
+            setSelectedOpponentId(nextId);
+          } else {
+            setSelectedFighterId(nextId);
+          }
+          return;
+        }
+
+        if (isMenuDownKey(event) || (mode !== "training" && isMenuRightKey(event))) {
+          event.preventDefault();
+          const currentId = activeRoster === "opponent" ? selectedOpponentId : selectedFighterId;
+          const currentIndex = fighters.findIndex((fighter) => fighter.id === currentId);
+          const nextIndex = getWrappedIndex(currentIndex, 1, fighters.length);
+          const nextId = fighters[nextIndex]?.id;
+          if (!nextId) {
+            return;
+          }
+
+          if (activeRoster === "opponent" && mode === "training") {
+            setSelectedOpponentId(nextId);
+          } else {
+            setSelectedFighterId(nextId);
+          }
+          return;
+        }
+
+        if (isMenuConfirmKey(event)) {
+          event.preventDefault();
+          setStep("stage");
+        }
+        return;
+      }
+
+      if (isMenuUpKey(event) || isMenuLeftKey(event)) {
+        event.preventDefault();
+        const currentIndex = arenas.findIndex((arena) => arena.id === selectedArenaId);
+        const nextIndex = getWrappedIndex(currentIndex, -1, arenas.length);
+        const nextId = arenas[nextIndex]?.id;
+        if (nextId) {
+          setSelectedArenaId(nextId);
+        }
+        return;
+      }
+
+      if (isMenuDownKey(event) || isMenuRightKey(event)) {
+        event.preventDefault();
+        const currentIndex = arenas.findIndex((arena) => arena.id === selectedArenaId);
+        const nextIndex = getWrappedIndex(currentIndex, 1, arenas.length);
+        const nextId = arenas[nextIndex]?.id;
+        if (nextId) {
+          setSelectedArenaId(nextId);
+        }
+        return;
+      }
+
+      if (isMenuConfirmKey(event) && ctaHref) {
+        event.preventDefault();
+        router.push(ctaHref);
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -258,26 +435,70 @@ export function FightCharacterSelect({
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [router]);
+  }, [
+    activeRoster,
+    ctaHref,
+    mode,
+    router,
+    selectedArenaId,
+    selectedFighterId,
+    selectedOpponentId,
+    step,
+  ]);
 
   if (!selectedFighter || !selectedOpponent) {
     return null;
   }
 
-  const ctaLabel = mode === "training" ? "Go To Training" : "Fight";
-  const ctaHref = mode === "training"
-    ? `/fight?mode=training&fighter=${selectedFighter.id}&opponent=${selectedOpponent.id}`
-    : `/fight?mode=local&fighter=${selectedFighter.id}`;
+  if (step === "stage") {
+    return (
+      <div className="fight-stage-select">
+        <div className="fight-stage-select-head">
+          <div className="fight-stage-select-kicker">Stage Select</div>
+          <div className="fight-stage-select-title">{matchupLabel}</div>
+          <div className="fight-stage-select-subtitle">{matchupHint}</div>
+        </div>
+
+        <div className="fight-stage-select-grid" role="list" aria-label="Arena list">
+          {arenas.map((arena) => (
+            <StageOptionCard
+              key={arena.id}
+              arena={arena}
+              selected={arena.id === selectedArena.id}
+              onSelect={() => setSelectedArenaId(arena.id)}
+            />
+          ))}
+        </div>
+
+        <div className="fight-character-select-actions">
+          <ArcadeMenuItem className="fight-character-select-back" onClick={() => setStep("fighters")}>
+            {"<"}
+          </ArcadeMenuItem>
+          <ArcadeMenuItem cta href={ctaHref} className="fight-character-select-cta">
+            {ctaLabel}
+          </ArcadeMenuItem>
+        </div>
+        <MenuControlsHint />
+      </div>
+    );
+  }
 
   return (
     <div className={`fight-character-select fight-character-select-${mode}`}>
-      <div className="fight-character-select-roster fight-character-select-roster-left" role="list" aria-label="Player roster">
+      <div
+        className={`fight-character-select-roster fight-character-select-roster-left${activeRoster === "fighter" ? " fight-character-select-roster-active" : ""}`}
+        role="list"
+        aria-label="Player roster"
+      >
         {fighters.map((fighter) => (
           <button
             key={fighter.id}
             type="button"
-            className={`fight-character-select-headshot-button${fighter.id === selectedFighter.id ? " fight-character-select-headshot-button-active" : ""}`}
-            onClick={() => setSelectedFighterId(fighter.id)}
+            className={`fight-character-select-headshot-button${fighter.id === selectedFighter.id ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "fighter" && fighter.id === selectedFighter.id ? " fight-character-select-headshot-button-cursor" : ""}`}
+            onClick={() => {
+              setActiveRoster("fighter");
+              setSelectedFighterId(fighter.id);
+            }}
           >
             {headshots[fighter.id] ? (
               <img src={headshots[fighter.id] ?? undefined} alt={fighter.name} className="fight-hud-headshot fight-character-select-headshot" />
@@ -298,13 +519,20 @@ export function FightCharacterSelect({
           <div className="fight-character-select-preview fight-character-select-preview-right">
             <CharacterPreview fighter={selectedOpponent} facing="left" />
           </div>
-          <div className="fight-character-select-roster fight-character-select-roster-right" role="list" aria-label="Opponent roster">
+          <div
+            className={`fight-character-select-roster fight-character-select-roster-right${activeRoster === "opponent" ? " fight-character-select-roster-active" : ""}`}
+            role="list"
+            aria-label="Opponent roster"
+          >
             {fighters.map((fighter) => (
               <button
                 key={`${fighter.id}-opponent`}
                 type="button"
-                className={`fight-character-select-headshot-button fight-character-select-headshot-button-right${fighter.id === selectedOpponent.id ? " fight-character-select-headshot-button-active" : ""}`}
-                onClick={() => setSelectedOpponentId(fighter.id)}
+                className={`fight-character-select-headshot-button fight-character-select-headshot-button-right${fighter.id === selectedOpponent.id ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "opponent" && fighter.id === selectedOpponent.id ? " fight-character-select-headshot-button-cursor" : ""}`}
+                onClick={() => {
+                  setActiveRoster("opponent");
+                  setSelectedOpponentId(fighter.id);
+                }}
               >
                 {headshots[fighter.id] ? (
                   <img src={headshots[fighter.id] ?? undefined} alt={fighter.name} className="fight-hud-headshot fight-character-select-headshot" />
@@ -321,10 +549,11 @@ export function FightCharacterSelect({
         <ArcadeMenuItem href="/" className="fight-character-select-back">
           {"<"}
         </ArcadeMenuItem>
-        <ArcadeMenuItem cta href={ctaHref} className="fight-character-select-cta">
+        <ArcadeMenuItem cta className="fight-character-select-cta" onClick={() => setStep("stage")}>
           {ctaLabel}
         </ArcadeMenuItem>
       </div>
+      <MenuControlsHint />
     </div>
   );
 }

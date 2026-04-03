@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { ArcadeMenuItem } from '@/components/arcade-menu-item';
 import { FightHud } from '@/components/fight-hud';
+import { getArena } from '@/lib/arenas';
 
 import { fighterRoster, getFighter } from '@battleborn/content';
 import {
@@ -28,8 +29,6 @@ import {
 const roster = fighterRoster;
 const matchServiceUrl =
   process.env.NEXT_PUBLIC_MATCH_SERVICE_URL ?? 'ws://localhost:8787';
-const defaultArenaBackgroundPath = '/arenas/underway.png';
-const defaultArenaBackgroundKey = 'default-arena-background';
 const defaultFighterRenderHeight = 168;
 const TRAINING_CONFIG = {
   ...DEFAULT_CONFIG,
@@ -95,6 +94,7 @@ export interface FightSceneProps {
   mode: FightMode;
   fighterId: string;
   opponentId: string;
+  arenaId: string;
   roomCode?: string;
   token?: string;
   playerName?: string;
@@ -461,12 +461,18 @@ function queueProjectileTextures(
 function getDesiredAnimationStance(
   state: MatchState,
   fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
 ): FightAnimationStance {
   if (shouldUseWinStance(state, fighter)) {
     return 'win';
   }
 
   if (fighter.action === 'attack') {
+    const move = fighter.attackId ? definition.moves[fighter.attackId] : null;
+    if (move?.animationStance) {
+      return move.animationStance;
+    }
+
     if (fighter.attackId === 'kick') {
       return 'attack2';
     }
@@ -536,18 +542,30 @@ function shouldUseWinStance(
 function getAvailableAnimationStance(
   state: MatchState,
   fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
   manifest: FighterAssetManifest | undefined,
 ): FightAnimationStance | null {
   if (!manifest) {
     return null;
   }
 
-  const desiredStance = getDesiredAnimationStance(state, fighter);
+  const desiredStance = getDesiredAnimationStance(state, fighter, definition);
   if (manifest.stanceSources[desiredStance].length > 0) {
     return desiredStance;
   }
 
   return manifest.stanceSources.idle.length > 0 ? 'idle' : null;
+}
+
+function isBlinkFrameVisible(
+  fighter: MatchState['fighters'][number],
+  frame: number,
+) {
+  if (fighter.invulnerableFrames <= 0) {
+    return true;
+  }
+
+  return Math.floor(frame / 4) % 2 === 0;
 }
 
 function getAttackTotalFrames(move: CharacterDefinition['moves'][string]) {
@@ -576,6 +594,39 @@ function getSpecialBuildUpAnimation(
   };
 }
 
+function getSpecialZoomOutFrameIndex(
+  fighter: MatchState['fighters'][number],
+  specialSequence: NonNullable<CharacterDefinition['moves'][string]['specialSequence']>,
+  frameCount: number,
+  buildUpFrameCount: number,
+) {
+  const remainingFrameCount = Math.max(0, frameCount - buildUpFrameCount);
+  if (
+    fighter.specialMovePhase !== 'zoom-out' ||
+    !specialSequence.completeAnimationDuringZoomOut ||
+    remainingFrameCount <= 0
+  ) {
+    return null;
+  }
+
+  const zoomOutDuration = Math.max(1, specialSequence.zoomOutFrames ?? 1);
+  const zoomOutProgress = zoomOutDuration <= 1
+    ? 1
+    : Math.max(
+        0,
+        Math.min(1, fighter.specialMovePhaseFrame / Math.max(1, zoomOutDuration - 1)),
+      );
+
+  return Math.min(
+    frameCount - 1,
+    buildUpFrameCount +
+      Math.min(
+        remainingFrameCount - 1,
+        Math.floor(zoomOutProgress * remainingFrameCount),
+      ),
+  );
+}
+
 function getSpecialBuildUpFrameIndex(
   fighter: MatchState['fighters'][number],
   move: CharacterDefinition['moves'][string],
@@ -601,11 +652,21 @@ function getSpecialBuildUpFrameIndex(
       );
   const lastBuildUpFrameIndex = Math.max(0, buildUpFrameCount - 1);
 
-  if (
-    fighter.specialMovePhase === 'landing-hold' ||
-    fighter.specialMovePhase === 'pause' ||
-    fighter.specialMovePhase === 'zoom-out'
-  ) {
+  if (fighter.specialMovePhase === 'landing-hold' || fighter.specialMovePhase === 'pause') {
+    return lastBuildUpFrameIndex;
+  }
+
+  const zoomOutFrameIndex = getSpecialZoomOutFrameIndex(
+    fighter,
+    specialSequence,
+    frameCount,
+    buildUpFrameCount,
+  );
+  if (zoomOutFrameIndex != null) {
+    return zoomOutFrameIndex;
+  }
+
+  if (fighter.specialMovePhase === 'zoom-out') {
     return lastBuildUpFrameIndex;
   }
 
@@ -648,15 +709,34 @@ function getSpecialAnimationFrameIndex(
     frameCount,
     Math.max(1, specialSequence.animationBuildUpFrames ?? buildUpDuration),
   );
+  const remainingFrameCount = Math.max(0, frameCount - buildUpFrameCount);
   const followThroughFrameCount = Math.max(1, frameCount - buildUpFrameCount);
   const lastBuildUpFrameIndex = Math.max(0, buildUpFrameCount - 1);
 
-  if (
-    fighter.specialMovePhase === 'landing-hold' ||
-    fighter.specialMovePhase === 'pause' ||
-    fighter.specialMovePhase === 'zoom-out'
-  ) {
+  if (fighter.specialMovePhase === 'landing-hold' || fighter.specialMovePhase === 'pause') {
     return lastBuildUpFrameIndex;
+  }
+
+  const zoomOutFrameIndex = getSpecialZoomOutFrameIndex(
+    fighter,
+    specialSequence,
+    frameCount,
+    buildUpFrameCount,
+  );
+  if (zoomOutFrameIndex != null) {
+    return zoomOutFrameIndex;
+  }
+
+  if (fighter.specialMovePhase === 'zoom-out') {
+    return lastBuildUpFrameIndex;
+  }
+
+  if (
+    fighter.specialMovePhase === 'follow-through' &&
+    specialSequence.completeAnimationDuringZoomOut &&
+    remainingFrameCount > 0
+  ) {
+    return frameCount - 1;
   }
 
   if (fighter.attackFrame <= buildUpDuration || buildUpFrameCount >= frameCount) {
@@ -855,6 +935,7 @@ function getProjectileSpriteScale(
   sourceImage: { width: number; height: number },
 ) {
   const projectileSpriteName = getProjectileSpriteName(projectile.sprite);
+  const scaleMultiplier = projectile.spriteScale ?? 1;
   if (
     projectileSpriteName === 'iceball' ||
     projectileSpriteName === 'fireball'
@@ -862,13 +943,13 @@ function getProjectileSpriteScale(
     return Math.max(
       (projectile.hitbox.width * 1.5) / sourceImage.width,
       (projectile.hitbox.height * 1.5) / sourceImage.height,
-    );
+    ) * scaleMultiplier;
   }
 
   return Math.max(
     (projectile.hitbox.width * 1.8) / sourceImage.width,
     (projectile.hitbox.height * 3.2) / sourceImage.height,
-  );
+  ) * scaleMultiplier;
 }
 
 function getProjectileTrailScales(projectile: MatchState['projectiles'][number]) {
@@ -2001,6 +2082,17 @@ export function FightScene(props: FightSceneProps) {
     () => getFighter(props.fighterId),
     [props.fighterId],
   );
+  const selectedArena = useMemo(
+    () => getArena(props.arenaId),
+    [props.arenaId],
+  );
+  const hasArenaBackground = Boolean(selectedArena.backgroundPath);
+  const arenaBackgroundStyle = useMemo<CSSProperties>(
+    () => ({
+      '--fight-arena-offset-y': `${selectedArena.backgroundOffsetY}px`,
+    }) as CSSProperties,
+    [selectedArena.backgroundOffsetY],
+  );
   const controlledFighterRuntime = useMemo(
     () => hudState?.fighters.find((fighter) => fighter.slot === playerSlot) ?? null,
     [hudState, playerSlot],
@@ -2458,7 +2550,6 @@ export function FightScene(props: FightSceneProps) {
 
       class ArenaScene extends Phaser.Scene {
         private readonly simulationStepMs = 1000 / FPS;
-        private arenaBackground?: InstanceType<typeof Phaser.GameObjects.Image>;
         private backgroundGraphics!: InstanceType<
           typeof Phaser.GameObjects.Graphics
         >;
@@ -2574,13 +2665,6 @@ export function FightScene(props: FightSceneProps) {
         }
 
         preload() {
-          if (!this.textures.exists(defaultArenaBackgroundKey)) {
-            this.load.image(
-              defaultArenaBackgroundKey,
-              defaultArenaBackgroundPath,
-            );
-          }
-
           queueManifestTextures(this, fighterAssetManifestsRef.current, false);
           queueProjectileTextures(
             this,
@@ -2590,27 +2674,7 @@ export function FightScene(props: FightSceneProps) {
         }
 
         create() {
-          this.cameras.main.setBackgroundColor('#08101b');
-          if (this.textures.exists(defaultArenaBackgroundKey)) {
-            const arenaSource = this.textures
-              .get(defaultArenaBackgroundKey)
-              .getSourceImage() as {
-              width: number;
-              height: number;
-            };
-            const arenaScale = Math.max(
-              DEFAULT_CONFIG.width / arenaSource.width,
-              DEFAULT_CONFIG.height / arenaSource.height,
-            );
-            this.arenaBackground = this.add.image(
-              DEFAULT_CONFIG.width / 2,
-              DEFAULT_CONFIG.height / 2,
-              defaultArenaBackgroundKey,
-            );
-            this.arenaBackground.setScale(arenaScale);
-            this.arenaBackground.setAlpha(0.92);
-            this.arenaBackground.setDepth(0);
-          }
+          this.cameras.main.setBackgroundColor('rgba(0, 0, 0, 0)');
           this.backgroundGraphics = this.add.graphics();
           this.backgroundGraphics.setDepth(1);
           this.fighterGraphics = this.add.graphics();
@@ -2751,7 +2815,7 @@ export function FightScene(props: FightSceneProps) {
           this.backgroundGraphics.clear();
           this.fighterGraphics.clear();
           this.projectileGraphics.clear();
-          if (!this.arenaBackground) {
+          if (!hasArenaBackground) {
             this.backgroundGraphics.fillGradientStyle(
               0x13233a,
               0x13233a,
@@ -2816,9 +2880,16 @@ export function FightScene(props: FightSceneProps) {
             const activeStance = getAvailableAnimationStance(
               state,
               fighter,
+              definition,
               manifest,
             );
             const existingSprite = this.fighterSprites.get(fighter.slot);
+            const visibleThisFrame = isBlinkFrameVisible(fighter, state.frame);
+
+            if (!visibleThisFrame) {
+              existingSprite?.setVisible(false);
+              return;
+            }
 
             if (activeStance && manifest) {
               const frames = manifest.stanceSources[activeStance];
@@ -2924,8 +2995,9 @@ export function FightScene(props: FightSceneProps) {
         type: Phaser.AUTO,
         width: DEFAULT_CONFIG.width,
         height: DEFAULT_CONFIG.height,
+        transparent: true,
         parent: containerRef.current!,
-        backgroundColor: '#08101b',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
         scene: ArenaScene,
       });
     })();
@@ -2939,7 +3011,9 @@ export function FightScene(props: FightSceneProps) {
     };
   }, [
     fighterDefinition,
+    hasArenaBackground,
     opponentDefinition,
+    props.arenaId,
     props.fighterId,
     props.mode,
     props.opponentId,
@@ -3072,10 +3146,20 @@ export function FightScene(props: FightSceneProps) {
       <div
         ref={containerRef}
         className="fight-canvas"
+        style={arenaBackgroundStyle}
         tabIndex={0}
         aria-label={`Fight match viewport. ${connectionState}`}
         aria-busy={isSceneBooting}
       >
+        {hasArenaBackground ? (
+          <div className="fight-arena-backdrop-shell" aria-hidden="true">
+            <img
+              src={selectedArena.backgroundPath}
+              alt=""
+              className="fight-arena-backdrop"
+            />
+          </div>
+        ) : null}
         {isSceneBooting ? (
           <div className="fight-loading-overlay">
             <div className="fight-loading-faceoff">

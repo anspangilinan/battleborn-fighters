@@ -16,6 +16,7 @@ type FightHudSlotProps = {
   fighter: MatchState["fighters"][number];
   headshotSource?: string | null;
   side: "left" | "right";
+  comboCount: number;
 };
 
 type FightHudRoundsProps = {
@@ -36,7 +37,7 @@ function FightHudRounds({ wins, side }: FightHudRoundsProps) {
   );
 }
 
-function FightHudSlot({ fighter, headshotSource, side }: FightHudSlotProps) {
+function FightHudSlot({ fighter, headshotSource, side, comboCount }: FightHudSlotProps) {
   const maxHealth = fighterRoster[fighter.fighterId].stats.maxHealth;
   const healthRatio = Math.max(0, Math.min(1, fighter.health / maxHealth));
   const previousRatioRef = useRef(healthRatio);
@@ -105,6 +106,12 @@ function FightHudSlot({ fighter, headshotSource, side }: FightHudSlotProps) {
           </>
         )}
       </div>
+      {comboCount >= 2 ? (
+        <div className={`fight-hud-combo fight-hud-combo-${side}`}>
+          <div className="fight-hud-combo-count">{comboCount} hit</div>
+          <div className="fight-hud-combo-label">COMBO</div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -114,18 +121,32 @@ export function FightHud({ state, headshots }: FightHudProps) {
     () => [...state.fighters].sort((first, second) => first.slot - second.slot),
     [state.fighters],
   );
+  const leftComboCount =
+    rightFighter.comboOwnerSlot === leftFighter.slot ? rightFighter.comboCount : 0;
+  const rightComboCount =
+    leftFighter.comboOwnerSlot === rightFighter.slot ? leftFighter.comboCount : 0;
   const timerLabel = Number.isFinite(state.timerFramesRemaining)
     ? Math.max(0, Math.ceil(state.timerFramesRemaining / 60))
     : "∞";
 
   return (
     <div className="fight-hud-shell" aria-hidden="true">
-      <FightHudSlot fighter={leftFighter} headshotSource={headshots[leftFighter.fighterId]} side="left" />
+      <FightHudSlot
+        fighter={leftFighter}
+        headshotSource={headshots[leftFighter.fighterId]}
+        side="left"
+        comboCount={leftComboCount}
+      />
       <div className="fight-hud-center">
         <div className="fight-hud-timer">{timerLabel}</div>
         <div className="fight-hud-round-label">Round {state.round}</div>
       </div>
-      <FightHudSlot fighter={rightFighter} headshotSource={headshots[rightFighter.fighterId]} side="right" />
+      <FightHudSlot
+        fighter={rightFighter}
+        headshotSource={headshots[rightFighter.fighterId]}
+        side="right"
+        comboCount={rightComboCount}
+      />
     </div>
   );
 }

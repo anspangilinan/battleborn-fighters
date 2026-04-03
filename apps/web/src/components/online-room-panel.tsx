@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
+import { isEditableTarget, isMenuBackKey } from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
 
@@ -17,6 +18,27 @@ export function OnlineRoomPanel() {
   const [fighterId, setFighterId] = useState(fighters[0]?.id ?? "morana");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (event.code !== "Escape" && !isMenuBackKey(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      router.push("/");
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [router]);
 
   function submit() {
     setError(null);

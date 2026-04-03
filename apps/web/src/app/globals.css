@@ -142,7 +142,10 @@ span {
   gap: clamp(14px, 3.6cqh, 28px);
   min-height: 100%;
   justify-items: center;
-  padding: clamp(20px, 4cqh, 32px);
+  padding:
+    clamp(20px, 4cqh, 32px)
+    clamp(20px, 4cqh, 32px)
+    clamp(84px, 12cqh, 120px);
   text-align: center;
 }
 
@@ -277,6 +280,7 @@ span {
   height: 100%;
   margin-inline: auto;
   padding-top: clamp(86px, 24cqh, 138px);
+  padding-bottom: clamp(84px, 12cqh, 120px);
 }
 
 .landing-menu-nav {
@@ -312,6 +316,15 @@ span {
   color: #2edcff;
 }
 
+.arcade-menu-item-active {
+  color: #2edcff;
+  border-color: #fff07f;
+  box-shadow:
+    0 0 0 4px rgba(11, 11, 24, 0.92) inset,
+    0 0 0 4px rgba(255, 240, 127, 0.24),
+    0 20px 40px rgba(0, 0, 0, 0.28);
+}
+
 .arcade-menu-item:disabled,
 .arcade-menu-item-disabled {
   border-color: rgba(246, 243, 232, 0.3);
@@ -336,6 +349,108 @@ span {
 
 .arcade-menu-item-cta:hover {
   color: #fff8b6;
+}
+
+.menu-controls-hint {
+  position: absolute;
+  right: clamp(12px, 2.4cqw, 24px);
+  bottom: clamp(12px, 2cqh, 24px);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: min(56cqw, 420px);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: rgba(233, 239, 246, 0.8);
+  font-size: clamp(0.92rem, 1.7cqw, 1.04rem);
+  letter-spacing: 0.06em;
+  font-family: var(--font-ui), "Trebuchet MS", "Verdana", sans-serif;
+  text-align: right;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+}
+
+.menu-controls-hint span {
+  font-family: inherit;
+}
+
+.menu-controls-hint-key,
+.menu-controls-key {
+  color: #fff07f;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.menu-controls-hint-separator {
+  color: rgba(233, 239, 246, 0.36);
+}
+
+.menu-controls-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(7, 16, 26, 0.78), rgba(3, 8, 16, 0.84)),
+    radial-gradient(circle at center, rgba(50, 213, 255, 0.12), transparent 44%);
+}
+
+.menu-controls-panel {
+  width: min(100%, 560px);
+  display: grid;
+  gap: 18px;
+  padding: clamp(20px, 3cqw, 28px);
+  border: 2px solid rgba(246, 243, 232, 0.22);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(17, 27, 44, 0.94), rgba(8, 14, 24, 0.96));
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(7, 16, 26, 0.4) inset;
+}
+
+.menu-controls-title {
+  color: #f6f3e8;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1.5rem, 4cqw, 2.6rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.menu-controls-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.menu-controls-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 14px;
+  color: rgba(233, 239, 246, 0.86);
+  font-size: 0.98rem;
+}
+
+.menu-controls-close {
+  justify-self: end;
+  min-width: 120px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(246, 243, 232, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f6f3e8;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .landing-menu-link {
@@ -671,6 +786,24 @@ span {
   outline: none;
 }
 
+.fight-arena-backdrop-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.fight-arena-backdrop {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  object-fit: cover;
+  opacity: 0.92;
+  transform: translate3d(0, var(--fight-arena-offset-y, 0px), 0);
+}
+
 .fight-canvas:focus,
 .fight-canvas:focus-visible {
   outline: none;
@@ -678,12 +811,16 @@ span {
 
 .fight-canvas canvas {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100% !important;
   height: 100% !important;
   image-rendering: pixelated;
+  background: transparent;
 }
 
-.fight-screen-special .fight-canvas canvas {
+.fight-screen-special .fight-canvas canvas,
+.fight-screen-special .fight-arena-backdrop-shell {
   transform: translate(var(--fight-special-pan-x, 0%), var(--fight-special-pan-y, 0%)) scale(var(--fight-special-zoom-scale, 1.82));
   transform-origin: top left;
   filter:
@@ -694,6 +831,7 @@ span {
 }
 
 .fight-canvas canvas,
+.fight-arena-backdrop-shell,
 .fight-hud-shell,
 .fight-controls-shell,
 .fight-training-panel,
@@ -722,6 +860,7 @@ span {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   opacity: 0;
   transition: opacity 180ms ease;
@@ -937,6 +1076,44 @@ span {
   justify-content: flex-end;
 }
 
+.fight-hud-combo {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding-top: 4px;
+  line-height: 0.88;
+  text-shadow:
+    0 2px 0 rgba(7, 16, 26, 0.9),
+    0 0 12px rgba(255, 213, 58, 0.3);
+}
+
+.fight-hud-combo-left {
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: start;
+}
+
+.fight-hud-combo-right {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: end;
+  text-align: right;
+}
+
+.fight-hud-combo-count {
+  color: #fff6c0;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1rem, 1.8cqw, 1.45rem);
+  letter-spacing: 0.08em;
+}
+
+.fight-hud-combo-label {
+  color: #ffcf42;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1.2rem, 2.3cqw, 1.85rem);
+  letter-spacing: 0.14em;
+}
+
 .fight-hud-name {
   flex: 1 1 auto;
   color: #f7f4dc;
@@ -955,22 +1132,54 @@ span {
     2px 2px 0 rgba(6, 10, 18, 0.9);
 }
 
+.fight-display-name {
+  display: inline-block;
+}
+
 .fight-display-name-prefix,
+.fight-display-name-body,
 .fight-display-name-highlight {
-  font: inherit;
   letter-spacing: inherit;
-  text-transform: inherit;
+  text-transform: none;
+  vertical-align: baseline;
+}
+
+.fight-display-name-prefix,
+.fight-display-name-body {
+  color: #f9fbff;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-weight: 700;
+  text-shadow:
+    -1px -1px 0 rgba(34, 40, 88, 0.96),
+    1px -1px 0 rgba(34, 40, 88, 0.96),
+    -1px 1px 0 rgba(34, 40, 88, 0.96),
+    1px 1px 0 rgba(34, 40, 88, 0.96),
+    0 0 10px rgba(120, 174, 255, 0.32);
 }
 
 .fight-display-name-highlight {
-  color: #ffd53a;
-  font-size: 1.5em;
-  line-height: 0.82;
+  display: inline-grid;
+  place-items: center;
+  min-width: 0.9em;
+  margin-right: 0.08em;
+  padding: 0.02em 0.12em 0.08em;
+  border: 0.06em solid #dce6ff;
+  border-radius: 0.12em;
+  background: linear-gradient(180deg, #3448b8 0%, #1d2a78 100%);
+  box-shadow:
+    0 0 0 0.05em rgba(9, 16, 36, 0.92),
+    inset 0 0 0 0.05em rgba(245, 219, 96, 0.82),
+    0 0 14px rgba(84, 131, 255, 0.3);
+  color: #ffd655;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 1.18em;
+  font-weight: 700;
+  line-height: 0.9;
   text-shadow:
-    -2px -2px 0 rgba(6, 10, 18, 0.9),
-    2px -2px 0 rgba(6, 10, 18, 0.9),
-    -2px 2px 0 rgba(6, 10, 18, 0.9),
-    2px 2px 0 rgba(6, 10, 18, 0.9);
+    -1px -1px 0 rgba(82, 55, 6, 0.9),
+    1px -1px 0 rgba(82, 55, 6, 0.9),
+    -1px 1px 0 rgba(82, 55, 6, 0.9),
+    1px 1px 0 rgba(82, 55, 6, 0.9);
 }
 
 .fight-hud-name-left {
@@ -1037,6 +1246,7 @@ span {
 }
 
 .fight-character-select {
+  position: relative;
   display: grid;
   --fight-character-select-roster-width: clamp(56px, 10cqw, 96px);
   --fight-character-select-versus-width: clamp(24px, 5cqw, 52px);
@@ -1067,6 +1277,10 @@ span {
   gap: 8px;
   padding-right: 4px;
   overflow-y: auto;
+}
+
+.fight-character-select-roster-active {
+  filter: drop-shadow(0 0 14px rgba(255, 240, 127, 0.18));
 }
 
 .fight-character-select-roster-right {
@@ -1101,6 +1315,13 @@ span {
   border-color: #fff07f;
   box-shadow:
     0 0 0 2px rgba(255, 240, 127, 0.35),
+    0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.fight-character-select-headshot-button-cursor .fight-character-select-headshot {
+  border-color: #2edcff;
+  box-shadow:
+    0 0 0 2px rgba(46, 220, 255, 0.32),
     0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
@@ -1204,6 +1425,142 @@ span {
   min-height: clamp(48px, 14cqh, 84px);
   padding-inline: clamp(24px, 3cqw, 40px);
   font-size: clamp(1.2rem, 4.4cqw, 2.4rem);
+}
+
+.fight-stage-select {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(12px, 2cqw, 24px);
+  width: 100%;
+  height: 100%;
+  padding: clamp(10px, 1.8cqw, 20px);
+  background:
+    radial-gradient(circle at left top, rgba(255, 240, 127, 0.12), transparent 26%),
+    radial-gradient(circle at right center, rgba(50, 213, 255, 0.08), transparent 30%),
+    linear-gradient(180deg, #04070f 0%, #02050a 100%);
+}
+
+.fight-stage-select-head {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+}
+
+.fight-stage-select-kicker {
+  color: rgba(255, 240, 127, 0.86);
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(0.82rem, 1.8cqw, 1.2rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.fight-stage-select-title {
+  color: #f6f3e8;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1.3rem, 3.8cqw, 3rem);
+  letter-spacing: 0.08em;
+  line-height: 0.94;
+  text-shadow:
+    -2px -2px 0 rgba(8, 12, 20, 0.92),
+    2px -2px 0 rgba(8, 12, 20, 0.92),
+    -2px 2px 0 rgba(8, 12, 20, 0.92),
+    2px 2px 0 rgba(8, 12, 20, 0.92);
+}
+
+.fight-stage-select-subtitle {
+  color: rgba(233, 239, 246, 0.76);
+  font-size: clamp(0.84rem, 1.8cqw, 1.08rem);
+  letter-spacing: 0.04em;
+}
+
+.fight-stage-select-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2cqw, 24px);
+  align-items: start;
+  min-height: 0;
+}
+
+.fight-stage-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: clamp(180px, 30cqh, 280px);
+  padding: 0;
+  border: 3px solid rgba(126, 145, 176, 0.32);
+  border-radius: 18px;
+  background: rgba(6, 12, 20, 0.84);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.fight-stage-card-selected {
+  transform: translateY(-2px);
+  border-color: #fff07f;
+  box-shadow:
+    0 0 0 2px rgba(255, 240, 127, 0.22),
+    0 18px 34px rgba(0, 0, 0, 0.34);
+}
+
+.fight-stage-card:hover:not(.fight-stage-card-selected) {
+  border-color: rgba(164, 191, 228, 0.54);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+}
+
+.fight-stage-card-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fight-stage-card:not(.fight-stage-card-selected) .fight-stage-card-preview {
+  filter: grayscale(0.9) saturate(0.34) brightness(0.62);
+}
+
+.fight-stage-card-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(3, 6, 14, 0.08) 0%, rgba(3, 6, 14, 0.74) 100%),
+    linear-gradient(90deg, rgba(3, 6, 14, 0.3) 0%, rgba(3, 6, 14, 0) 44%);
+}
+
+.fight-stage-card:not(.fight-stage-card-selected) .fight-stage-card-scrim {
+  background:
+    linear-gradient(180deg, rgba(3, 6, 14, 0.26) 0%, rgba(3, 6, 14, 0.86) 100%),
+    linear-gradient(90deg, rgba(3, 6, 14, 0.46) 0%, rgba(3, 6, 14, 0.12) 44%);
+}
+
+.fight-stage-card-copy {
+  position: absolute;
+  left: clamp(14px, 2.2cqw, 22px);
+  right: clamp(14px, 2.2cqw, 22px);
+  bottom: clamp(14px, 2.2cqw, 22px);
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.fight-stage-card-name {
+  color: #f8f5ea;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1rem, 2.4cqw, 1.8rem);
+  letter-spacing: 0.06em;
+  line-height: 0.96;
+  text-shadow:
+    -2px -2px 0 rgba(8, 12, 20, 0.92),
+    2px -2px 0 rgba(8, 12, 20, 0.92),
+    -2px 2px 0 rgba(8, 12, 20, 0.92),
+    2px 2px 0 rgba(8, 12, 20, 0.92);
+}
+
+.fight-stage-card:not(.fight-stage-card-selected) .fight-stage-card-name {
+  color: rgba(233, 239, 246, 0.76);
 }
 
 .fight-controls-shell {
@@ -2208,6 +2565,14 @@ span {
     align-items: baseline;
   }
 
+  .fight-stage-select-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fight-stage-card {
+    min-height: clamp(150px, 24cqh, 220px);
+  }
+
   .animation-link-actions {
     gap: 14px;
   }
@@ -2252,6 +2617,14 @@ span {
   .landing-menu-character-image {
     max-width: none;
     max-height: none;
+  }
+
+  .fight-stage-select-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fight-stage-card {
+    min-height: clamp(136px, 30cqh, 190px);
   }
 
   .fight-pause-action {

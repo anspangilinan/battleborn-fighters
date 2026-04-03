@@ -21,14 +21,19 @@ function splitDisplayName(name: string) {
 
 export function FightDisplayName({ className, name }: FightDisplayNameProps) {
   const { prefix, firstCharacter, remainingCharacters } = splitDisplayName(name);
+  const combinedClassName = className
+    ? `fight-display-name ${className}`
+    : "fight-display-name";
 
   return (
-    <span className={className}>
+    <span className={combinedClassName}>
       {prefix ? <span className="fight-display-name-prefix">{prefix}</span> : null}
       {firstCharacter ? (
         <span className="fight-display-name-highlight">{firstCharacter}</span>
       ) : null}
-      {remainingCharacters}
+      {remainingCharacters ? (
+        <span className="fight-display-name-body">{remainingCharacters}</span>
+      ) : null}
     </span>
   );
 }

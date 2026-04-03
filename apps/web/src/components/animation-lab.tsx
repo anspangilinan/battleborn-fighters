@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
+import { isMenuBackKey } from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
 const defaultSelectedFighterIds = fighters.map((entry) => entry.id);
@@ -169,7 +170,7 @@ export function AnimationLab() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.repeat) {
+      if (event.repeat || (event.key !== "Escape" && !isMenuBackKey(event))) {
         return;
       }
 
