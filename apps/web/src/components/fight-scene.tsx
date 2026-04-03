@@ -139,11 +139,22 @@ type FightAnimationStance = (typeof fightAnimationStances)[number];
 const KO_SLOWDOWN_DURATION_MS = 260;
 const KO_SLOWDOWN_TIME_SCALE = 1 / 3;
 const KO_ANNOUNCEMENT_DURATION_MS = 2000;
+const PARAK_WIN_COMPANION_FIGHTER_ID = 'paraktaktak';
+const PARAK_WIN_COMPANION_RENDER_HEIGHT = 55;
+const PARAK_WIN_COMPANION_WALK_FRAME_DURATION = 6;
+const PARAK_WIN_COMPANION_FINISH_FRAME_DURATION = 7;
+const PARAK_WIN_COMPANION_WALK_SPEED = 4.1;
+const PARAK_WIN_COMPANION_SCREEN_MARGIN = 44;
+const PARAK_WIN_COMPANION_TARGET_OFFSET = 58;
 
 type FighterAssetManifest = {
   headshotSource: string | null;
   portraitSource: string | null;
   stanceSources: Record<FightAnimationStance, string[]>;
+  winCompanion: {
+    walkSources: string[];
+    finishSources: string[];
+  } | null;
 };
 
 type FullscreenCapableElement = HTMLDivElement & {
@@ -287,6 +298,10 @@ function getCachedProjectileAssetSource(sprite: string) {
 }
 
 async function loadSequentialFrames(assetDirectory: string) {
+  return loadSequentialFrameSet(assetDirectory);
+}
+
+async function loadSequentialFrameSet(assetBasePath: string) {
   const namingStrategies = [
     (index: number) => `${String(index + 1).padStart(2, '0')}.png`,
     (index: number) => `${index}.png`,
@@ -296,7 +311,7 @@ async function loadSequentialFrames(assetDirectory: string) {
   for (const getFrameName of namingStrategies) {
     const discoveredFrames: string[] = [];
     for (let index = 0; index < 24; index += 1) {
-      const src = `${assetDirectory}${getFrameName(index)}`;
+      const src = `${assetBasePath}${getFrameName(index)}`;
       const exists = await preloadImage(src);
       if (!exists) {
         break;
@@ -346,6 +361,46 @@ async function discoverStanceFrames(
   return [];
 }
 
+async function discoverPrefixedFrames(
+  assetRoots: string[],
+  prefixes: string[],
+) {
+  for (const root of assetRoots) {
+    for (const prefix of prefixes) {
+      const frames = await loadSequentialFrameSet(`${root}/${prefix}`);
+      if (frames.length > 0) {
+        return frames;
+      }
+    }
+  }
+
+  return [];
+}
+
+async function discoverWinCompanionAssets(
+  fighter: CharacterDefinition,
+  assetRoots: string[],
+) {
+  if (fighter.id !== PARAK_WIN_COMPANION_FIGHTER_ID) {
+    return null;
+  }
+
+  const walkSources = await discoverPrefixedFrames(assetRoots, [
+    'animations/win/comp-walk-',
+    'win/comp-walk-',
+  ]);
+  const finishSources = await discoverPrefixedFrames(assetRoots, [
+    'animations/win/comp-',
+    'win/comp-',
+  ]);
+
+  if (walkSources.length === 0 && finishSources.length === 0) {
+    return null;
+  }
+
+  return { walkSources, finishSources };
+}
+
 async function discoverFighterAssets(
   fighter: CharacterDefinition,
 ): Promise<FighterAssetManifest> {
@@ -370,6 +425,7 @@ async function discoverFighterAssets(
         [stance, await discoverStanceFrames(assetRoots, stance)] as const,
     ),
   );
+  const winCompanion = await discoverWinCompanionAssets(fighter, assetRoots);
 
   return {
     headshotSource,
@@ -378,6 +434,7 @@ async function discoverFighterAssets(
       FightAnimationStance,
       string[]
     >,
+    winCompanion,
   };
 }
 
@@ -418,6 +475,28 @@ function queueManifestTextures(
         }
       });
     }
+
+    manifest.winCompanion?.walkSources.forEach((source, frameIndex) => {
+      const textureKey = getWinCompanionTextureKey(
+        fighterId,
+        'walk',
+        frameIndex,
+      );
+      if (!scene.textures.exists(textureKey)) {
+        scene.load.image(textureKey, source);
+      }
+    });
+
+    manifest.winCompanion?.finishSources.forEach((source, frameIndex) => {
+      const textureKey = getWinCompanionTextureKey(
+        fighterId,
+        'finish',
+        frameIndex,
+      );
+      if (!scene.textures.exists(textureKey)) {
+        scene.load.image(textureKey, source);
+      }
+    });
   }
 
   if (
@@ -908,6 +987,115 @@ function getAnimationTextureKey(
   frameIndex: number,
 ) {
   return `${fighterId}:animation:${stance}:${frameIndex}`;
+}
+
+function getWinCompanionTextureKey(
+  fighterId: string,
+  phase: 'walk' | 'finish',
+  frameIndex: number,
+) {
+  return `${fighterId}:win-companion:${phase}:${frameIndex}`;
+}
+
+function getParakWinCompanionState(
+  state: MatchState,
+  fighter: MatchState['fighters'][number],
+  manifest: FighterAssetManifest | undefined,
+) {
+  if (
+    fighter.fighterId !== PARAK_WIN_COMPANION_FIGHTER_ID ||
+    !shouldUseWinStance(state, fighter) ||
+    !manifest?.winCompanion
+  ) {
+    return null;
+  }
+
+  const { walkSources, finishSources } = manifest.winCompanion;
+  if (walkSources.length === 0 && finishSources.length === 0) {
+    return null;
+  }
+
+  const startSide = fighter.x >= DEFAULT_CONFIG.width / 2 ? 'left' : 'right';
+  const startX =
+    startSide === 'left'
+      ? -PARAK_WIN_COMPANION_SCREEN_MARGIN
+      : DEFAULT_CONFIG.width + PARAK_WIN_COMPANION_SCREEN_MARGIN;
+  const targetDirection = startSide === 'left' ? -1 : 1;
+  const unclampedTargetX =
+    fighter.x + targetDirection * PARAK_WIN_COMPANION_TARGET_OFFSET;
+  const targetX = Math.max(
+    PARAK_WIN_COMPANION_SCREEN_MARGIN,
+    Math.min(
+      DEFAULT_CONFIG.width - PARAK_WIN_COMPANION_SCREEN_MARGIN,
+      unclampedTargetX,
+    ),
+  );
+  const totalDistance = Math.abs(targetX - startX);
+  const walkDurationFrames =
+    totalDistance <= 0
+      ? 0
+      : Math.ceil(totalDistance / PARAK_WIN_COMPANION_WALK_SPEED);
+  const walkProgress =
+    walkDurationFrames <= 0
+      ? 1
+      : Math.min(1, fighter.actionFrames / walkDurationFrames);
+  const x = startX + (targetX - startX) * walkProgress;
+  const flipX = startSide === 'right';
+
+  if (walkProgress < 1 && walkSources.length > 0) {
+    return {
+      textureKey: getWinCompanionTextureKey(
+        fighter.fighterId,
+        'walk',
+        Math.floor(
+          fighter.actionFrames / PARAK_WIN_COMPANION_WALK_FRAME_DURATION,
+        ) % walkSources.length,
+      ),
+      x,
+      y: fighter.y + 6,
+      flipX,
+      depth: 3.08,
+    };
+  }
+
+  if (finishSources.length > 0) {
+    const finishFrame = Math.min(
+      finishSources.length - 1,
+      Math.max(
+        0,
+        Math.floor(
+          (fighter.actionFrames - walkDurationFrames) /
+            PARAK_WIN_COMPANION_FINISH_FRAME_DURATION,
+        ),
+      ),
+    );
+
+    return {
+      textureKey: getWinCompanionTextureKey(fighter.fighterId, 'finish', finishFrame),
+      x: targetX,
+      y: fighter.y + 6,
+      flipX,
+      depth: 3.08,
+    };
+  }
+
+  if (walkSources.length > 0) {
+    return {
+      textureKey: getWinCompanionTextureKey(
+        fighter.fighterId,
+        'walk',
+        Math.floor(
+          fighter.actionFrames / PARAK_WIN_COMPANION_WALK_FRAME_DURATION,
+        ) % walkSources.length,
+      ),
+      x: targetX,
+      y: fighter.y + 6,
+      flipX,
+      depth: 3.08,
+    };
+  }
+
+  return null;
 }
 
 function getSpecialHoverVisualLift(
@@ -2563,6 +2751,10 @@ export function FightScene(props: FightSceneProps) {
           1 | 2,
           InstanceType<typeof Phaser.GameObjects.Image>
         >();
+        private fighterCompanionSprites = new Map<
+          1 | 2,
+          InstanceType<typeof Phaser.GameObjects.Image>
+        >();
         private projectileSprites = new Map<
           number,
           InstanceType<typeof Phaser.GameObjects.Image>
@@ -2815,6 +3007,7 @@ export function FightScene(props: FightSceneProps) {
           this.backgroundGraphics.clear();
           this.fighterGraphics.clear();
           this.projectileGraphics.clear();
+          this.fighterCompanionSprites.forEach((sprite) => sprite.setVisible(false));
           if (!hasArenaBackground) {
             this.backgroundGraphics.fillGradientStyle(
               0x13233a,
@@ -2870,6 +3063,11 @@ export function FightScene(props: FightSceneProps) {
           state.fighters.forEach((fighter) => {
             const definition = roster[fighter.fighterId];
             const manifest = fighterAssetManifestsRef.current[fighter.fighterId];
+            const companionState = getParakWinCompanionState(
+              state,
+              fighter,
+              manifest,
+            );
             const activeStance = getAvailableAnimationStance(
               state,
               fighter,
@@ -2877,7 +3075,39 @@ export function FightScene(props: FightSceneProps) {
               manifest,
             );
             const existingSprite = this.fighterSprites.get(fighter.slot);
+            const existingCompanionSprite =
+              this.fighterCompanionSprites.get(fighter.slot);
             const visibleThisFrame = isBlinkFrameVisible(fighter, state.frame);
+
+            if (companionState) {
+              if (this.textures.exists(companionState.textureKey)) {
+                const sourceImage = this.textures
+                  .get(companionState.textureKey)
+                  .getSourceImage() as { height: number };
+                const companionSprite =
+                  existingCompanionSprite ??
+                  this.add.image(
+                    companionState.x,
+                    companionState.y,
+                    companionState.textureKey,
+                  );
+
+                companionSprite.setTexture(companionState.textureKey);
+                companionSprite.setVisible(true);
+                companionSprite.setDepth(companionState.depth);
+                companionSprite.setOrigin(0.5, 1);
+                companionSprite.setPosition(companionState.x, companionState.y);
+                companionSprite.setFlipX(companionState.flipX);
+                companionSprite.setScale(
+                  PARAK_WIN_COMPANION_RENDER_HEIGHT / sourceImage.height,
+                );
+                this.fighterCompanionSprites.set(fighter.slot, companionSprite);
+              } else {
+                existingCompanionSprite?.setVisible(false);
+              }
+            } else {
+              existingCompanionSprite?.setVisible(false);
+            }
 
             if (!visibleThisFrame) {
               existingSprite?.setVisible(false);
