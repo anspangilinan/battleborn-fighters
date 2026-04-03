@@ -13,6 +13,29 @@ const charybdis = localFont({
 export const metadata: Metadata = {
   title: "Battleborn Fighters",
   description: "A browser-based 2D fighting game MVP with local practice and online room play.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
+  openGraph: {
+    title: "Battleborn Fighters",
+    description: "A browser-based 2D fighting game MVP with local practice and online room play.",
+    images: [
+      {
+        url: "/fighters-pixel-logo.png",
+        width: 256,
+        height: 170,
+        alt: "Battleborn Fighters logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Battleborn Fighters",
+    description: "A browser-based 2D fighting game MVP with local practice and online room play.",
+    images: ["/fighters-pixel-logo.png"],
+  },
 };
 
 export const viewport: Viewport = {
