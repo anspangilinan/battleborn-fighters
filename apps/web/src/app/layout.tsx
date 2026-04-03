@@ -13,11 +13,6 @@ const charybdis = localFont({
 export const metadata: Metadata = {
   title: "Battleborn Fighters",
   description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
-  },
   openGraph: {
     title: "Battleborn Fighters",
     description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
