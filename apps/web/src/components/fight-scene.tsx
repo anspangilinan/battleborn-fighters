@@ -2865,13 +2865,6 @@ export function FightScene(props: FightSceneProps) {
               DEFAULT_CONFIG.width,
               DEFAULT_CONFIG.height,
             );
-            this.backgroundGraphics.fillStyle(0x02050a, 0.2);
-            this.backgroundGraphics.fillEllipse(
-              DEFAULT_CONFIG.width / 2,
-              DEFAULT_CONFIG.groundY + 34,
-              DEFAULT_CONFIG.width * 0.76,
-              90,
-            );
           }
 
           state.fighters.forEach((fighter) => {
