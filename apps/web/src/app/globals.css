@@ -1162,13 +1162,12 @@ span {
   place-items: center;
   min-width: 0.9em;
   margin-right: 0.08em;
-  padding: 0.02em 0.12em 0.08em;
-  border: 0.06em solid #dce6ff;
-  border-radius: 0.12em;
+  padding: 0.01em 0.1em;
+  border: 0.03em solid rgba(220, 230, 255, 0.9);
+  border-radius: 0.08em;
   background: linear-gradient(180deg, #3448b8 0%, #1d2a78 100%);
   box-shadow:
-    0 0 0 0.05em rgba(9, 16, 36, 0.92),
-    inset 0 0 0 0.05em rgba(245, 219, 96, 0.82),
+    0 0 0 0.03em rgba(9, 16, 36, 0.92),
     0 0 14px rgba(84, 131, 255, 0.3);
   color: #ffd655;
   font-family: "Georgia", "Times New Roman", serif;
