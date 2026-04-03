@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
@@ -18,10 +18,8 @@ import {
 const fighters = Object.values(fighterRoster);
 const MAX_IDLE_FRAME_SCAN = 24;
 const MENU_IDLE_FRAME_MS = 120;
-const ACCESS_PASSWORD = "what it is";
-const ACCESS_STORAGE_KEY = "battleborn-access-granted";
 
-type HomeScreenStage = "title" | "password" | "menu";
+type HomeScreenStage = "title" | "menu";
 
 type MenuCharacterDisplayProps = {
   fighter: (typeof fighters)[number] | undefined;
@@ -219,15 +217,11 @@ const menuEntries: MenuEntry[] = [
 
 export function HomeScreen() {
   const router = useRouter();
-  const [stage, setStage] = useState<HomeScreenStage>("password");
-  const [isAccessResolved, setIsAccessResolved] = useState(false);
+  const [stage, setStage] = useState<HomeScreenStage>("title");
   const [menuPair, setMenuPair] = useState<[string, string]>(() => pickRandomMenuPair());
-  const [password, setPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(() =>
     menuEntries.findIndex((entry) => !entry.disabled),
   );
-  const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const leftFighter = useMemo(
     () => fighters.find((fighter) => fighter.id === menuPair[0]) ?? fighters[0],
@@ -237,16 +231,6 @@ export function HomeScreen() {
     () => fighters.find((fighter) => fighter.id === menuPair[1]) ?? fighters[1] ?? fighters[0],
     [menuPair],
   );
-
-  useEffect(() => {
-    try {
-      setStage(window.localStorage.getItem(ACCESS_STORAGE_KEY) === "true" ? "title" : "password");
-    } catch {
-      setStage("password");
-    }
-
-    setIsAccessResolved(true);
-  }, []);
 
   useEffect(() => {
     if (stage !== "title") {
@@ -272,14 +256,6 @@ export function HomeScreen() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", advanceToMenu);
     };
-  }, [stage]);
-
-  useEffect(() => {
-    if (stage !== "password") {
-      return;
-    }
-
-    passwordInputRef.current?.focus();
   }, [stage]);
 
   useEffect(() => {
@@ -347,68 +323,6 @@ export function HomeScreen() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [router, selectedMenuIndex, stage]);
-
-  const submitPassword = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (password.trim().toLowerCase() !== ACCESS_PASSWORD) {
-      setPasswordError("That isn't it.");
-      return;
-    }
-
-    try {
-      window.localStorage.setItem(ACCESS_STORAGE_KEY, "true");
-    } catch {
-      // Ignore storage access failures and continue for the current page load.
-    }
-
-    setPassword("");
-    setPasswordError("");
-    setStage("title");
-  };
-
-  if (!isAccessResolved) {
-    return <main className="landing-page landing-password-screen" aria-hidden="true" />;
-  }
-
-  if (stage === "password") {
-    return (
-      <main className="landing-page landing-password-screen">
-        <div className="landing-password-overlay" role="presentation">
-          <form
-            className="landing-password-panel"
-            onSubmit={submitPassword}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="landing-password-label"
-          >
-            <label id="landing-password-label" className="landing-password-label" htmlFor="landing-password-input">
-              It is...
-            </label>
-            <input
-              ref={passwordInputRef}
-              id="landing-password-input"
-              type="password"
-              value={password}
-              onChange={(event) => {
-                setPassword(event.target.value);
-                if (passwordError) {
-                  setPasswordError("");
-                }
-              }}
-              className="landing-password-input"
-              autoComplete="off"
-              spellCheck={false}
-              aria-describedby={passwordError ? "landing-password-error" : undefined}
-            />
-            <p className={`landing-password-error${passwordError ? " landing-password-error-visible" : ""}`} id="landing-password-error">
-              {passwordError || " "}
-            </p>
-          </form>
-        </div>
-      </main>
-    );
-  }
 
   if (stage === "title") {
     return (

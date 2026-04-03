@@ -102,15 +102,13 @@ span {
 }
 
 .landing-title-screen,
-.landing-menu-screen,
-.landing-password-screen {
+.landing-menu-screen {
   display: grid;
   place-items: center;
 }
 
 .landing-title-screen::before,
-.landing-menu-screen::before,
-.landing-password-screen::before {
+.landing-menu-screen::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -174,74 +172,6 @@ span {
   text-transform: uppercase;
   white-space: nowrap;
   animation: landing-prompt-flash 900ms steps(2, end) infinite;
-}
-
-.landing-password-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  padding: clamp(20px, 4cqw, 40px);
-  background:
-    linear-gradient(180deg, rgba(4, 7, 15, 0.2), rgba(4, 7, 15, 0.72)),
-    radial-gradient(circle at center, rgba(50, 213, 255, 0.14), transparent 40%);
-}
-
-.landing-password-panel {
-  display: grid;
-  gap: clamp(10px, 1.8cqh, 18px);
-  width: min(100%, 440px);
-  justify-items: center;
-  padding: clamp(8px, 1.2cqw, 16px);
-}
-
-.landing-password-label {
-  color: #fff07f;
-  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
-  font-size: clamp(2.4rem, 6cqw, 4rem);
-  letter-spacing: 0.06em;
-  line-height: 0.95;
-  text-transform: none;
-  text-shadow:
-    -3px -3px 0 rgba(8, 12, 20, 0.92),
-    3px -3px 0 rgba(8, 12, 20, 0.92),
-    -3px 3px 0 rgba(8, 12, 20, 0.92),
-    3px 3px 0 rgba(8, 12, 20, 0.92);
-}
-
-.landing-password-input {
-  width: 100%;
-  min-height: clamp(58px, 12cqh, 72px);
-  padding: 0 18px;
-  border: 3px solid rgba(246, 243, 232, 0.68);
-  background: rgba(2, 5, 10, 0.94);
-  color: #f6f3e8;
-  font-family: "Courier New", monospace;
-  font-size: clamp(1rem, 2.2cqw, 1.35rem);
-  letter-spacing: 0.06em;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(11, 11, 24, 0.8) inset;
-}
-
-.landing-password-input:focus {
-  border-color: #33d9ff;
-}
-
-.landing-password-error {
-  min-height: 1.2em;
-  margin: 0;
-  color: #ff7d68;
-  font-family: "Courier New", monospace;
-  font-size: clamp(0.95rem, 1.9cqw, 1.1rem);
-  letter-spacing: 0.04em;
-  text-align: center;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.landing-password-error-visible {
-  opacity: 1;
 }
 
 .landing-menu-screen {
@@ -2386,10 +2316,6 @@ span {
 }
 
 @container app-frame (max-width: 720px) {
-  .landing-password-panel {
-    width: min(100%, 360px);
-  }
-
   .landing-menu-logo {
     width: min(28cqw, 184px);
   }
