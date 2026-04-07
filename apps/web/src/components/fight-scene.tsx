@@ -1,16 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { ArcadeMenuItem } from '@/components/arcade-menu-item';
 import { FightHud } from '@/components/fight-hud';
-import { getArena } from '@/lib/arenas';
+import { getArena, pickRandomArenaId } from '@/lib/arenas';
 
 import { fighterRoster, getFighter } from '@battleborn/content';
 import {
   DEFAULT_CONFIG,
   EMPTY_INPUT,
   FPS,
+  MAX_OVERCHARGE_METER,
   cloneInput,
   createMatchState,
   decodeInput,
@@ -34,12 +36,14 @@ const TRAINING_CONFIG = {
   ...DEFAULT_CONFIG,
   roundSeconds: Number.POSITIVE_INFINITY,
 };
+const TRAINING_HEALTH_RECOVERY_PER_FRAME = 48;
+const TRAINING_OVERCHARGE_RECOVERY_PER_FRAME = 5;
 
-type FightMode = 'local' | 'training' | 'online';
+type FightMode = 'local' | 'training' | 'online' | 'arcade';
 type TrainingOpponentMode = 'idle' | 'bot';
 type ControlInputKey = keyof Pick<
   InputState,
-  'up' | 'left' | 'right' | 'punch' | 'kick' | 'special'
+  'up' | 'left' | 'right' | 'punch' | 'kick' | 'special' | 'overcharge'
 >;
 type AttackInputKey = keyof Pick<InputState, 'punch' | 'kick' | 'special'>;
 type AttackCooldownDisplay = {
@@ -95,6 +99,8 @@ export interface FightSceneProps {
   fighterId: string;
   opponentId: string;
   arenaId: string;
+  arcadeOrder?: string[];
+  arcadeIndex?: number;
   roomCode?: string;
   token?: string;
   playerName?: string;
@@ -120,6 +126,32 @@ type InfoMessage = {
 };
 
 type ServerMessage = SnapshotMessage | RoomStateMessage | InfoMessage;
+
+function buildArcadeFightHref(
+  fighterId: string,
+  arcadeOrder: string[],
+  arcadeIndex: number,
+  currentArenaId?: string,
+  playerName?: string,
+) {
+  const params = new URLSearchParams({
+    mode: 'arcade',
+    fighter: fighterId,
+    arena: pickRandomArenaId(currentArenaId),
+    arcadeOrder: arcadeOrder.join(','),
+    arcadeIndex: String(arcadeIndex),
+  });
+  const opponentId = arcadeOrder[arcadeIndex];
+  if (opponentId) {
+    params.set('opponent', opponentId);
+  }
+
+  if (playerName) {
+    params.set('name', playerName);
+  }
+
+  return `/fight?${params.toString()}`;
+}
 
 const fightAnimationStances = [
   'idle',
@@ -1114,6 +1146,254 @@ function getSpecialHoverVisualLift(
   return hoverHeight;
 }
 
+function getOverchargeActivationProgress(
+  fighter: MatchState['fighters'][number],
+) {
+  if (fighter.overchargeActivationFrames <= 0) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.min(1, 1 - fighter.overchargeActivationFrames / 20),
+  );
+}
+
+function strokeOverchargeSparkleRay(
+  graphics: any,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  glowWidth: number,
+  glowColor: number,
+  glowAlpha: number,
+  coreWidth: number,
+  coreColor: number,
+  coreAlpha: number,
+) {
+  graphics.lineStyle(glowWidth, glowColor, glowAlpha);
+  graphics.beginPath();
+  graphics.moveTo(fromX, fromY);
+  graphics.lineTo(toX, toY);
+  graphics.strokePath();
+
+  graphics.lineStyle(coreWidth, coreColor, coreAlpha);
+  graphics.beginPath();
+  graphics.moveTo(fromX, fromY);
+  graphics.lineTo(toX, toY);
+  graphics.strokePath();
+}
+
+function renderOverchargeSparkle(
+  graphics: any,
+  x: number,
+  y: number,
+  size: number,
+  alpha: number,
+  rotation: number,
+) {
+  const primaryLength = size;
+  const secondaryLength = size * 0.62;
+  const diagonalLength = size * 0.42;
+  const axisCos = Math.cos(rotation);
+  const axisSin = Math.sin(rotation);
+  const perpCos = Math.cos(rotation + Math.PI / 2);
+  const perpSin = Math.sin(rotation + Math.PI / 2);
+  const diagCos = Math.cos(rotation + Math.PI / 4);
+  const diagSin = Math.sin(rotation + Math.PI / 4);
+  const diagPerpCos = Math.cos(rotation - Math.PI / 4);
+  const diagPerpSin = Math.sin(rotation - Math.PI / 4);
+
+  strokeOverchargeSparkleRay(
+    graphics,
+    x - axisCos * primaryLength,
+    y - axisSin * primaryLength,
+    x + axisCos * primaryLength,
+    y + axisSin * primaryLength,
+    4.8,
+    0xffefaf,
+    alpha * 0.34,
+    2,
+    0xffffff,
+    alpha * 0.95,
+  );
+  strokeOverchargeSparkleRay(
+    graphics,
+    x - perpCos * secondaryLength,
+    y - perpSin * secondaryLength,
+    x + perpCos * secondaryLength,
+    y + perpSin * secondaryLength,
+    4,
+    0x8af7ff,
+    alpha * 0.28,
+    1.7,
+    0xfffcf0,
+    alpha * 0.88,
+  );
+  strokeOverchargeSparkleRay(
+    graphics,
+    x - diagCos * diagonalLength,
+    y - diagSin * diagonalLength,
+    x + diagCos * diagonalLength,
+    y + diagSin * diagonalLength,
+    2.8,
+    0x93efff,
+    alpha * 0.18,
+    1.1,
+    0xe8ffff,
+    alpha * 0.58,
+  );
+  strokeOverchargeSparkleRay(
+    graphics,
+    x - diagPerpCos * diagonalLength,
+    y - diagPerpSin * diagonalLength,
+    x + diagPerpCos * diagonalLength,
+    y + diagPerpSin * diagonalLength,
+    2.8,
+    0xffefb1,
+    alpha * 0.16,
+    1.1,
+    0xf7ffff,
+    alpha * 0.54,
+  );
+
+  graphics.fillStyle(0xfff7d8, alpha * 0.74);
+  graphics.fillCircle(x, y, Math.max(1.8, size * 0.18));
+  graphics.fillStyle(0xffffff, alpha * 0.95);
+  graphics.fillCircle(x, y, Math.max(1.1, size * 0.09));
+}
+
+function renderOverchargeAura(
+  graphics: any,
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+  matchFrame: number,
+  layer: 'back' | 'front',
+) {
+  if (fighter.overchargeActiveFrames <= 0) {
+    return;
+  }
+
+  const visualLift =
+    getDashVisualLift(fighter, definition) +
+    getSpecialHoverVisualLift(fighter, definition);
+  const baseX = fighter.x;
+  const baseY = fighter.y + 6 - visualLift;
+  const pulse = 0.5 + 0.5 * Math.sin(matchFrame * 0.28 + fighter.slot * 1.9);
+  const auraWidth = 36 + pulse * 7;
+  const auraHeight = 78 + pulse * 11;
+  const activationProgress = getOverchargeActivationProgress(fighter);
+  const auraCenterY = baseY - 64;
+
+  if (layer === 'back') {
+    graphics.fillStyle(0xffe7a0, 0.05 + pulse * 0.035);
+    graphics.fillEllipse(baseX, auraCenterY, auraWidth * 1.12, auraHeight * 0.92);
+    graphics.fillStyle(0x9af8ff, 0.04 + pulse * 0.03);
+    graphics.fillEllipse(baseX, auraCenterY - 2, auraWidth * 0.84, auraHeight * 0.66);
+    graphics.lineStyle(2.6, 0xfff8d7, 0.11 + pulse * 0.08);
+    graphics.strokeEllipse(baseX, auraCenterY, auraWidth * 0.72, auraHeight * 0.5);
+  } else {
+    graphics.lineStyle(1.8, 0xfff8d7, 0.08 + pulse * 0.06);
+    graphics.strokeEllipse(baseX, auraCenterY - 1, auraWidth * 0.54, auraHeight * 0.4);
+  }
+
+  for (let sparkleIndex = 0; sparkleIndex < 7; sparkleIndex += 1) {
+    const sparkleInFront = sparkleIndex % 2 === 0;
+    if ((layer === 'front') !== sparkleInFront) {
+      continue;
+    }
+
+    const sparkleSeed =
+      matchFrame * (0.07 + sparkleIndex * 0.004) +
+      fighter.slot * 1.9 +
+      sparkleIndex * 1.47;
+    const orbitX = 16 + (sparkleIndex % 3) * 10 + pulse * 4;
+    const orbitY = 18 + (sparkleIndex % 2) * 16 + pulse * 6;
+    const sparkleX =
+      baseX +
+      Math.cos(sparkleSeed * 1.18 + sparkleIndex) * orbitX +
+      Math.sin(sparkleSeed * 0.7) * 4;
+    const sparkleY =
+      auraCenterY +
+      Math.sin(sparkleSeed * 0.92 + sparkleIndex * 0.6) * orbitY -
+      4 +
+      Math.cos(sparkleSeed * 1.54) * 4;
+    const sparkleSize =
+      4.8 +
+      (sparkleIndex % 3) * 1.35 +
+      (0.5 + 0.5 * Math.sin(sparkleSeed * 2.4)) * 2.8;
+    const sparkleAlpha = 0.22 + (0.5 + 0.5 * Math.sin(sparkleSeed * 2.1)) * 0.4;
+    renderOverchargeSparkle(
+      graphics,
+      sparkleX,
+      sparkleY,
+      sparkleSize,
+      sparkleAlpha * (layer === 'front' ? 1 : 0.76),
+      sparkleSeed * 1.7,
+    );
+  }
+
+  for (let moteIndex = 0; moteIndex < 9; moteIndex += 1) {
+    const moteInFront = moteIndex % 2 === 1;
+    if ((layer === 'front') !== moteInFront) {
+      continue;
+    }
+
+    const moteSeed = matchFrame * 0.055 + fighter.slot * 2.1 + moteIndex * 0.88;
+    const driftX =
+      baseX +
+      Math.sin(moteSeed * 1.4 + moteIndex) * (18 + (moteIndex % 3) * 8);
+    const driftY =
+      auraCenterY +
+      38 -
+      ((moteSeed * 28 + moteIndex * 11) % 88) +
+      Math.cos(moteSeed * 1.8) * 3;
+    const moteRadius = 1.4 + (moteIndex % 2) * 0.7;
+    graphics.fillStyle(
+      moteIndex % 3 === 0 ? 0xfff0bb : 0xbaf9ff,
+      (layer === 'front' ? 0.2 : 0.13) + ((moteIndex + fighter.slot) % 3) * 0.06,
+    );
+    graphics.fillCircle(driftX, driftY, moteRadius);
+  }
+
+  if (fighter.overchargeActivationFrames > 0) {
+    const burstProgress = 1 - fighter.overchargeActivationFrames / 20;
+    const burstRadius = 18 + burstProgress * 72;
+    if (layer === 'back') {
+      graphics.fillStyle(0xfff6d2, (1 - burstProgress) * 0.16);
+      graphics.fillCircle(baseX, auraCenterY, 18 + burstProgress * 30);
+    }
+    for (let burstIndex = 0; burstIndex < 8; burstIndex += 1) {
+      const burstInFront = burstIndex % 2 === 0;
+      if ((layer === 'front') !== burstInFront) {
+        continue;
+      }
+
+      const angle = (Math.PI * 2 * burstIndex) / 8 + burstProgress * 0.42;
+      const sparkleX = baseX + Math.cos(angle) * burstRadius;
+      const sparkleY = auraCenterY + Math.sin(angle) * burstRadius * 0.72;
+      renderOverchargeSparkle(
+        graphics,
+        sparkleX,
+        sparkleY,
+        10 + (1 - burstProgress) * 8,
+        (1 - burstProgress) * (layer === 'front' ? 0.88 : 0.64),
+        angle,
+      );
+    }
+  } else if (activationProgress > 0) {
+    renderOverchargeSparkle(
+      graphics,
+      baseX,
+      auraCenterY,
+      13 + pulse * 4,
+      0.28 + pulse * 0.18,
+      matchFrame * 0.1,
+    );
+  }
+}
+
 function getProjectileTextureKey(sprite: string) {
   return `projectile:${sprite}`;
 }
@@ -1825,6 +2105,23 @@ function createAiInput(state: MatchState, botState: FightBotState): InputState {
     player,
     playerDefinition,
   );
+  const overchargeReady =
+    player.overchargeActiveFrames === 0 &&
+    player.overchargeMeter >= MAX_OVERCHARGE_METER;
+  const playerHealthRatio = player.health / playerDefinition.stats.maxHealth;
+  const targetHealthRatio = target.health / targetDefinition.stats.maxHealth;
+
+  if (
+    overchargeReady &&
+    (
+      playerHealthRatio <= 0.75 ||
+      player.recoverableHealth >= playerDefinition.stats.maxHealth * 0.12 ||
+      targetHealthRatio <= 0.45
+    )
+  ) {
+    nextInput.overcharge = true;
+    return nextInput;
+  }
 
   if (!player.grounded) {
     const canThrowAerialProjectile =
@@ -2227,7 +2524,85 @@ function hasNewKo(previousState: MatchState | null, nextState: MatchState) {
   );
 }
 
+function isTrainingReadyState(fighter: MatchState['fighters'][number]) {
+  return fighter.health > 0 &&
+    fighter.hitstun === 0 &&
+    fighter.attackId == null &&
+    fighter.overchargeActivationFrames === 0 &&
+    fighter.action !== 'ko';
+}
+
+function restoreTrainingInfiniteHealthState(
+  fighter: MatchState['fighters'][number],
+  maxHealth: number,
+) {
+  fighter.health = 1;
+  fighter.recoverableHealth = Math.max(fighter.recoverableHealth, maxHealth - fighter.health);
+  fighter.attackId = null;
+  fighter.attackFrame = 0;
+  fighter.specialMovePhase = null;
+  fighter.specialMovePhaseFrame = 0;
+  fighter.attackConnected = false;
+  fighter.pendingFollowUpMoveId = null;
+  fighter.hitstun = 0;
+  fighter.comboCount = 0;
+  fighter.comboOwnerSlot = null;
+  fighter.comboTimerFrames = 0;
+  fighter.action = fighter.grounded ? 'idle' : 'jump';
+  fighter.vx *= fighter.grounded ? 0.35 : 0.82;
+  if (fighter.grounded) {
+    fighter.vy = 0;
+  }
+}
+
+function applyTrainingAssists(
+  state: MatchState,
+  infiniteHealthEnabled: boolean,
+  infiniteOverchargeEnabled: boolean,
+) {
+  let cancelledRoundOver = false;
+
+  for (const fighter of state.fighters) {
+    const maxHealth = roster[fighter.fighterId]?.stats.maxHealth ?? fighter.health;
+
+    if (infiniteHealthEnabled && fighter.health <= 0) {
+      restoreTrainingInfiniteHealthState(fighter, maxHealth);
+      cancelledRoundOver = true;
+    }
+
+    if (infiniteHealthEnabled && isTrainingReadyState(fighter) && fighter.health < maxHealth) {
+      fighter.health = Math.min(
+        maxHealth,
+        fighter.health + TRAINING_HEALTH_RECOVERY_PER_FRAME,
+      );
+      fighter.recoverableHealth = fighter.health >= maxHealth
+        ? 0
+        : Math.min(fighter.recoverableHealth, maxHealth - fighter.health);
+    }
+
+    if (
+      infiniteOverchargeEnabled &&
+      fighter.overchargeActiveFrames === 0 &&
+      fighter.overchargeActivationFrames === 0
+    ) {
+      fighter.overchargeMeter = state.status === 'countdown'
+        ? MAX_OVERCHARGE_METER
+        : Math.min(
+            MAX_OVERCHARGE_METER,
+            fighter.overchargeMeter + TRAINING_OVERCHARGE_RECOVERY_PER_FRAME,
+          );
+    }
+  }
+
+  if (cancelledRoundOver && (state.status === 'round-over' || state.status === 'match-over')) {
+    state.status = 'fighting';
+    state.roundOverFramesRemaining = 0;
+    state.winner = null;
+  }
+}
+
 export function FightScene(props: FightSceneProps) {
+  const router = useRouter();
   const screenRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const arenaSceneRef = useRef<any>(null);
@@ -2237,6 +2612,8 @@ export function FightScene(props: FightSceneProps) {
   const liveInputRef = useRef<InputState>(cloneInput());
   const isPausedRef = useRef(false);
   const trainingOpponentModeRef = useRef<TrainingOpponentMode>('idle');
+  const trainingInfiniteHealthRef = useRef(false);
+  const trainingInfiniteOverchargeRef = useRef(false);
   const fighterAssetManifestsRef = useRef<Record<string, FighterAssetManifest>>(
     {},
   );
@@ -2253,6 +2630,8 @@ export function FightScene(props: FightSceneProps) {
   const [playerSlot, setPlayerSlot] = useState<1 | 2>(1);
   const [trainingOpponentMode, setTrainingOpponentMode] =
     useState<TrainingOpponentMode>('idle');
+  const [trainingInfiniteHealth, setTrainingInfiniteHealth] = useState(false);
+  const [trainingInfiniteOvercharge, setTrainingInfiniteOvercharge] = useState(false);
   const [visualInput, setVisualInput] = useState<InputState>(() =>
     cloneInput(),
   );
@@ -2261,6 +2640,7 @@ export function FightScene(props: FightSceneProps) {
   );
   const hasReportedResult = useRef(false);
   const koAnnouncementTimeoutRef = useRef<number | null>(null);
+  const arcadeAdvanceTimeoutRef = useRef<number | null>(null);
 
   const opponentDefinition = useMemo(
     () => getFighter(props.opponentId),
@@ -2316,6 +2696,51 @@ export function FightScene(props: FightSceneProps) {
       ) as Record<AttackInputKey, AttackCooldownDisplay>,
     [controlledFighterDefinition, controlledFighterRuntime],
   );
+  const nextArcadeHref = useMemo(() => {
+    if (props.mode !== 'arcade' || !props.arcadeOrder?.length) {
+      return null;
+    }
+
+    const nextArcadeIndex = (props.arcadeIndex ?? 0) + 1;
+    if (nextArcadeIndex >= props.arcadeOrder.length) {
+      return null;
+    }
+
+    return buildArcadeFightHref(
+      props.fighterId,
+      props.arcadeOrder,
+      nextArcadeIndex,
+      props.arenaId,
+      props.playerName,
+    );
+  }, [
+    props.arcadeIndex,
+    props.arcadeOrder,
+    props.arenaId,
+    props.fighterId,
+    props.mode,
+    props.playerName,
+  ]);
+  const overchargeControlState = useMemo(() => {
+    const overchargeMeter = controlledFighterRuntime?.overchargeMeter ?? 0;
+    const overchargeActiveFrames =
+      controlledFighterRuntime?.overchargeActiveFrames ?? 0;
+    const ready =
+      overchargeActiveFrames === 0 &&
+      overchargeMeter >= MAX_OVERCHARGE_METER;
+
+    return {
+      active: overchargeActiveFrames > 0,
+      ready,
+      enabled: ready,
+      label:
+        overchargeActiveFrames > 0
+          ? `${(overchargeActiveFrames / FPS).toFixed(1)}s`
+          : ready
+            ? 'READY'
+            : `${Math.round(overchargeMeter)}%`,
+    };
+  }, [controlledFighterRuntime]);
 
   const activeSpecialCinematic = useMemo(() => {
     const activeSpecial = getActiveSpecialCinematicState(hudState);
@@ -2368,6 +2793,10 @@ export function FightScene(props: FightSceneProps) {
       if (koAnnouncementTimeoutRef.current !== null) {
         window.clearTimeout(koAnnouncementTimeoutRef.current);
       }
+
+      if (arcadeAdvanceTimeoutRef.current !== null) {
+        window.clearTimeout(arcadeAdvanceTimeoutRef.current);
+      }
     },
     [],
   );
@@ -2382,6 +2811,9 @@ export function FightScene(props: FightSceneProps) {
       kick: keyboardInputRef.current.kick || pointerInputRef.current.kick,
       special:
         keyboardInputRef.current.special || pointerInputRef.current.special,
+      overcharge:
+        keyboardInputRef.current.overcharge ||
+        pointerInputRef.current.overcharge,
     };
 
     liveInputRef.current = nextInput;
@@ -2447,6 +2879,31 @@ export function FightScene(props: FightSceneProps) {
   }, [isSceneBooting, props.mode, trainingOpponentMode]);
 
   useEffect(() => {
+    if (props.mode !== 'arcade' || !hudState || hudState.status !== 'match-over') {
+      if (arcadeAdvanceTimeoutRef.current !== null) {
+        window.clearTimeout(arcadeAdvanceTimeoutRef.current);
+        arcadeAdvanceTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (hudState.winner !== playerSlot || !nextArcadeHref) {
+      return;
+    }
+
+    arcadeAdvanceTimeoutRef.current = window.setTimeout(() => {
+      router.push(nextArcadeHref);
+    }, KO_ANNOUNCEMENT_DURATION_MS);
+
+    return () => {
+      if (arcadeAdvanceTimeoutRef.current !== null) {
+        window.clearTimeout(arcadeAdvanceTimeoutRef.current);
+        arcadeAdvanceTimeoutRef.current = null;
+      }
+    };
+  }, [hudState, nextArcadeHref, playerSlot, props.mode, router]);
+
+  useEffect(() => {
     const currentDocument = document as FullscreenCapableDocument;
 
     const syncFullscreenState = () => {
@@ -2494,6 +2951,10 @@ export function FightScene(props: FightSceneProps) {
     setPlayerSlot(1);
     setTrainingOpponentMode('idle');
     trainingOpponentModeRef.current = 'idle';
+    setTrainingInfiniteHealth(false);
+    trainingInfiniteHealthRef.current = false;
+    setTrainingInfiniteOvercharge(false);
+    trainingInfiniteOverchargeRef.current = false;
     fightBotStateRef.current = createFightBotState();
     if (koAnnouncementTimeoutRef.current !== null) {
       window.clearTimeout(koAnnouncementTimeoutRef.current);
@@ -2551,6 +3012,7 @@ export function FightScene(props: FightSceneProps) {
       KeyJ: 'punch',
       KeyK: 'kick',
       KeyL: 'special',
+      KeyO: 'overcharge',
     };
 
     const cleanupKeyboard = () => {
@@ -2741,7 +3203,13 @@ export function FightScene(props: FightSceneProps) {
         private backgroundGraphics!: InstanceType<
           typeof Phaser.GameObjects.Graphics
         >;
+        private overchargeBackGraphics!: InstanceType<
+          typeof Phaser.GameObjects.Graphics
+        >;
         private fighterGraphics!: InstanceType<
+          typeof Phaser.GameObjects.Graphics
+        >;
+        private overchargeFrontGraphics!: InstanceType<
           typeof Phaser.GameObjects.Graphics
         >;
         private projectileGraphics!: InstanceType<
@@ -2869,8 +3337,12 @@ export function FightScene(props: FightSceneProps) {
           this.cameras.main.setBackgroundColor('rgba(0, 0, 0, 0)');
           this.backgroundGraphics = this.add.graphics();
           this.backgroundGraphics.setDepth(1);
+          this.overchargeBackGraphics = this.add.graphics();
+          this.overchargeBackGraphics.setDepth(2);
           this.fighterGraphics = this.add.graphics();
           this.fighterGraphics.setDepth(3);
+          this.overchargeFrontGraphics = this.add.graphics();
+          this.overchargeFrontGraphics.setDepth(3.25);
           this.projectileGraphics = this.add.graphics();
           this.projectileGraphics.setDepth(4);
           arenaSceneRef.current = this;
@@ -2929,6 +3401,8 @@ export function FightScene(props: FightSceneProps) {
             setConnectionState(
               'Training mode running against an immobile dummy.',
             );
+          } else if (props.mode === 'arcade') {
+            setConnectionState('Arcade mode running against the current ladder opponent.');
           } else {
             setConnectionState('Fight mode running against a bot.');
           }
@@ -2944,7 +3418,7 @@ export function FightScene(props: FightSceneProps) {
             return;
           }
 
-          if (props.mode === 'local' || props.mode === 'training') {
+          if (props.mode === 'local' || props.mode === 'training' || props.mode === 'arcade') {
             const boundedDelta = Math.min(delta, 100);
             const scaledDelta =
               this.koSlowdownRemainingMs > 0
@@ -2972,6 +3446,13 @@ export function FightScene(props: FightSceneProps) {
                 opponentInput,
                 localMatchConfig,
               );
+              if (props.mode === 'training') {
+                applyTrainingAssists(
+                  localState.current,
+                  trainingInfiniteHealthRef.current,
+                  trainingInfiniteOverchargeRef.current,
+                );
+              }
               this.simulationAccumulatorMs -= this.simulationStepMs;
               didAdvanceSimulation = true;
 
@@ -3005,7 +3486,9 @@ export function FightScene(props: FightSceneProps) {
 
         draw(state: MatchState) {
           this.backgroundGraphics.clear();
+          this.overchargeBackGraphics.clear();
           this.fighterGraphics.clear();
+          this.overchargeFrontGraphics.clear();
           this.projectileGraphics.clear();
           this.fighterCompanionSprites.forEach((sprite) => sprite.setVisible(false));
           if (!hasArenaBackground) {
@@ -3130,7 +3613,21 @@ export function FightScene(props: FightSceneProps) {
               );
               if (!this.textures.exists(textureKey)) {
                 existingSprite?.setVisible(false);
+                renderOverchargeAura(
+                  this.overchargeBackGraphics,
+                  fighter,
+                  definition,
+                  state.frame,
+                  'back',
+                );
                 renderFighterFallback(this.fighterGraphics, fighter, definition);
+                renderOverchargeAura(
+                  this.overchargeFrontGraphics,
+                  fighter,
+                  definition,
+                  state.frame,
+                  'front',
+                );
                 return;
               }
               const sourceImage = this.textures
@@ -3145,6 +3642,16 @@ export function FightScene(props: FightSceneProps) {
               const visualLift =
                 getDashVisualLift(fighter, definition) +
                 getSpecialHoverVisualLift(fighter, definition);
+              const overchargePulse =
+                fighter.overchargeActiveFrames > 0
+                  ? 0.5 + 0.5 * Math.sin(state.frame * 0.28 + fighter.slot * 1.9)
+                  : 0;
+              const overchargeActivationProgress =
+                getOverchargeActivationProgress(fighter);
+              const activationPulse =
+                fighter.overchargeActivationFrames > 0
+                  ? 1 + (1 - overchargeActivationProgress) * 0.08
+                  : 1;
 
               fighterSprite.setTexture(textureKey);
               fighterSprite.setVisible(true);
@@ -3152,12 +3659,49 @@ export function FightScene(props: FightSceneProps) {
               fighterSprite.setOrigin(0.5, 1);
               fighterSprite.setPosition(fighter.x, fighter.y + 6 - visualLift);
               fighterSprite.setFlipX(fighter.facing < 0);
-              fighterSprite.setScale(spriteScale);
+              fighterSprite.setScale(
+                spriteScale * (1 + overchargePulse * 0.03) * activationPulse,
+              );
+              if (fighter.overchargeActiveFrames > 0) {
+                fighterSprite.setTint(0xfff8dc);
+                fighterSprite.setAlpha(0.94 + overchargePulse * 0.06);
+              } else {
+                fighterSprite.clearTint();
+                fighterSprite.setAlpha(1);
+              }
               this.fighterSprites.set(fighter.slot, fighterSprite);
+              renderOverchargeAura(
+                this.overchargeBackGraphics,
+                fighter,
+                definition,
+                state.frame,
+                'back',
+              );
               renderGuardOverlay(this.fighterGraphics, fighter, definition);
+              renderOverchargeAura(
+                this.overchargeFrontGraphics,
+                fighter,
+                definition,
+                state.frame,
+                'front',
+              );
             } else {
               existingSprite?.setVisible(false);
+              renderOverchargeAura(
+                this.overchargeBackGraphics,
+                fighter,
+                definition,
+                state.frame,
+                'back',
+              );
               renderFighterFallback(this.fighterGraphics, fighter, definition);
+              renderOverchargeAura(
+                this.overchargeFrontGraphics,
+                fighter,
+                definition,
+                state.frame,
+                'front',
+              );
             }
           });
 
@@ -3294,6 +3838,14 @@ export function FightScene(props: FightSceneProps) {
   const fightAnnouncement =
     koAnnouncement ?? countdownAnnouncement ?? roundResultAnnouncement;
 
+  useEffect(() => {
+    document.body.classList.add('fight-route-active');
+
+    return () => {
+      document.body.classList.remove('fight-route-active');
+    };
+  }, []);
+
   const toggleFullscreen = async () => {
     const fullscreenCapableScreen = screenRef.current as FullscreenCapableElement | null;
     if (!fullscreenCapableScreen) {
@@ -3329,6 +3881,15 @@ export function FightScene(props: FightSceneProps) {
       style={specialCinematicStyle}
       onPointerDown={focusMatch}
     >
+      {hasArenaBackground ? (
+        <div className="fight-arena-backdrop-shell" aria-hidden="true">
+          <img
+            src={selectedArena.backgroundPath}
+            alt=""
+            className="fight-arena-backdrop"
+          />
+        </div>
+      ) : null}
       {!isSceneBooting && isFullscreenSupported ? (
         <button
           type="button"
@@ -3374,15 +3935,6 @@ export function FightScene(props: FightSceneProps) {
         aria-label={`Fight match viewport. ${connectionState}`}
         aria-busy={isSceneBooting}
       >
-        {hasArenaBackground ? (
-          <div className="fight-arena-backdrop-shell" aria-hidden="true">
-            <img
-              src={selectedArena.backgroundPath}
-              alt=""
-              className="fight-arena-backdrop"
-            />
-          </div>
-        ) : null}
         {isSceneBooting ? (
           <div className="fight-loading-overlay">
             <div className="fight-loading-faceoff">
@@ -3399,53 +3951,89 @@ export function FightScene(props: FightSceneProps) {
             </div>
           </div>
         ) : null}
-      </div>
-      {!isSceneBooting && activeSpecialCinematic ? (
-        <div
-          className={`fight-special-overlay fight-special-phase-${activeSpecialCinematic.phase}`}
-          aria-hidden="true"
-        >
-          <div className="fight-special-backlight" />
-          {activeSpecialCinematic.frameSource ? (
-            <img
-              src={activeSpecialCinematic.frameSource}
-              alt=""
-              className={`fight-special-focus${activeSpecialCinematic.fighter.facing < 0 ? ' fight-special-focus-flipped' : ''}`}
-            />
-          ) : null}
-        </div>
-      ) : null}
-      {!isSceneBooting && hudState ? (
-        <FightHud
-          state={hudState}
-          headshots={hudHeadshots}
-        />
-      ) : null}
-      {!isSceneBooting && props.mode === 'training' ? (
-        <div
-          className="fight-training-panel"
-          role="group"
-          aria-label="Training opponent behavior"
-        >
-          <div className="fight-training-toggle">
-            {(['idle', 'bot'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={`fight-training-toggle-button${trainingOpponentMode === mode ? ' fight-training-toggle-button-active' : ''}`}
-                aria-pressed={trainingOpponentMode === mode}
-                onClick={() => {
-                  trainingOpponentModeRef.current = mode;
-                  setTrainingOpponentMode(mode);
-                  focusMatch();
-                }}
-              >
-                {mode === 'idle' ? 'Idle' : 'Bot'}
-              </button>
-            ))}
+        {!isSceneBooting && activeSpecialCinematic ? (
+          <div
+            className={`fight-special-overlay fight-special-phase-${activeSpecialCinematic.phase}`}
+            aria-hidden="true"
+          >
+            <div className="fight-special-backlight" />
+            {activeSpecialCinematic.frameSource ? (
+              <img
+                src={activeSpecialCinematic.frameSource}
+                alt=""
+                className={`fight-special-focus${activeSpecialCinematic.fighter.facing < 0 ? ' fight-special-focus-flipped' : ''}`}
+              />
+            ) : null}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+        {!isSceneBooting && hudState ? (
+          <FightHud
+            state={hudState}
+            headshots={hudHeadshots}
+          />
+        ) : null}
+        {!isSceneBooting && props.mode === 'training' ? (
+          <div
+            className="fight-training-panel"
+            role="group"
+            aria-label="Training options"
+          >
+            <div className="fight-training-panel-stack">
+              <div className="fight-training-group">
+                <div className="fight-training-group-label">Opponent</div>
+                <div className="fight-training-toggle">
+                  {(['idle', 'bot'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`fight-training-toggle-button${trainingOpponentMode === mode ? ' fight-training-toggle-button-active' : ''}`}
+                      aria-pressed={trainingOpponentMode === mode}
+                      onClick={() => {
+                        trainingOpponentModeRef.current = mode;
+                        setTrainingOpponentMode(mode);
+                        focusMatch();
+                      }}
+                    >
+                      {mode === 'idle' ? 'Idle' : 'Bot'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="fight-training-group">
+                <div className="fight-training-group-label">Assist</div>
+                <div className="fight-training-toggle">
+                  <button
+                    type="button"
+                    className={`fight-training-toggle-button${trainingInfiniteHealth ? ' fight-training-toggle-button-active' : ''}`}
+                    aria-pressed={trainingInfiniteHealth}
+                    onClick={() => {
+                      const nextValue = !trainingInfiniteHealthRef.current;
+                      trainingInfiniteHealthRef.current = nextValue;
+                      setTrainingInfiniteHealth(nextValue);
+                      focusMatch();
+                    }}
+                  >
+                    HP∞
+                  </button>
+                  <button
+                    type="button"
+                    className={`fight-training-toggle-button${trainingInfiniteOvercharge ? ' fight-training-toggle-button-active' : ''}`}
+                    aria-pressed={trainingInfiniteOvercharge}
+                    onClick={() => {
+                      const nextValue = !trainingInfiniteOverchargeRef.current;
+                      trainingInfiniteOverchargeRef.current = nextValue;
+                      setTrainingInfiniteOvercharge(nextValue);
+                      focusMatch();
+                    }}
+                  >
+                    OC∞
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
       {!isSceneBooting && fightAnnouncement ? (
         <div
           className={`fight-countdown-overlay fight-countdown-phase-${fightAnnouncement.phase}`}
@@ -3537,47 +4125,89 @@ export function FightScene(props: FightSceneProps) {
                   const cooldownStyle = cooldown.cooling
                     ? ({ '--cooldown-ratio': `${cooldown.remainingRatio}` } as CSSProperties)
                     : undefined;
+                  const attackButton = (
+                    <button
+                      type="button"
+                      className={`fight-control-button fight-control-button-action${activeClass}${coolingClass}`}
+                      aria-disabled={cooldown.cooling}
+                      style={cooldownStyle}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        focusMatch();
+                        if (cooldown.cooling) {
+                          setInputSourceValue('pointer', control.key, false);
+                          return;
+                        }
+
+                        setInputSourceValue('pointer', control.key, true);
+                      }}
+                      onPointerUp={() =>
+                        setInputSourceValue('pointer', control.key, false)
+                      }
+                      onPointerLeave={() =>
+                        setInputSourceValue('pointer', control.key, false)
+                      }
+                      onPointerCancel={() =>
+                        setInputSourceValue('pointer', control.key, false)
+                      }
+                    >
+                      <span className="fight-control-button-face">
+                        {control.label}
+                      </span>
+                      {cooldown.cooling ? (
+                        <span
+                          className="fight-control-button-cooldown-sweep"
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </button>
+                  );
 
                   return (
                     <div
                       key={control.key}
-                      className="fight-control-stack"
+                      className={`fight-control-stack${control.key === 'special' ? ' fight-control-stack-special' : ''}`}
                     >
-                      <button
-                        type="button"
-                        className={`fight-control-button fight-control-button-action${activeClass}${coolingClass}`}
-                        aria-disabled={cooldown.cooling}
-                        style={cooldownStyle}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          focusMatch();
-                          if (cooldown.cooling) {
-                            setInputSourceValue('pointer', control.key, false);
-                            return;
-                          }
+                      {control.key === 'special' ? (
+                        <div className="fight-control-special-buttons">
+                          <button
+                            type="button"
+                            className={
+                              `fight-control-button fight-control-button-action fight-control-button-overcharge` +
+                              `${visualInput.overcharge ? ' fight-control-button-active' : ''}` +
+                              `${overchargeControlState.ready ? ' fight-control-button-overcharge-ready' : ''}` +
+                              `${overchargeControlState.active ? ' fight-control-button-overcharge-active' : ''}`
+                            }
+                            disabled={!overchargeControlState.enabled && !overchargeControlState.active}
+                            aria-disabled={!overchargeControlState.enabled && !overchargeControlState.active}
+                            title={`Overcharge ${overchargeControlState.label}`}
+                            onPointerDown={(event) => {
+                              event.preventDefault();
+                              focusMatch();
+                              if (!overchargeControlState.enabled) {
+                                setInputSourceValue('pointer', 'overcharge', false);
+                                return;
+                              }
 
-                          setInputSourceValue('pointer', control.key, true);
-                        }}
-                        onPointerUp={() =>
-                          setInputSourceValue('pointer', control.key, false)
-                        }
-                        onPointerLeave={() =>
-                          setInputSourceValue('pointer', control.key, false)
-                        }
-                        onPointerCancel={() =>
-                          setInputSourceValue('pointer', control.key, false)
-                        }
-                      >
-                        <span className="fight-control-button-face">
-                          {control.label}
-                        </span>
-                        {cooldown.cooling ? (
-                          <span
-                            className="fight-control-button-cooldown-sweep"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                      </button>
+                              setInputSourceValue('pointer', 'overcharge', true);
+                            }}
+                            onPointerUp={() =>
+                              setInputSourceValue('pointer', 'overcharge', false)
+                            }
+                            onPointerLeave={() =>
+                              setInputSourceValue('pointer', 'overcharge', false)
+                            }
+                            onPointerCancel={() =>
+                              setInputSourceValue('pointer', 'overcharge', false)
+                            }
+                          >
+                            <span className="fight-control-button-face">
+                              O
+                            </span>
+                          </button>
+                          {attackButton}
+                        </div>
+                      ) : attackButton}
                       <span
                         className={`fight-control-cooldown-label${cooldown.cooling ? ' fight-control-cooldown-label-active' : ''}`}
                       >

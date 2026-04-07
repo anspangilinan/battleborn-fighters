@@ -8,7 +8,14 @@ import { fighterRoster } from "@battleborn/content";
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
 import { FightDisplayName } from "@/components/fight-display-name";
 import { MenuControlsHint } from "@/components/menu-controls";
-import { arenas, defaultArenaId, getArena, isArenaId, type ArenaDefinition } from "@/lib/arenas";
+import {
+  arenas,
+  defaultArenaId,
+  getArena,
+  isArenaId,
+  pickRandomArenaId,
+  type ArenaDefinition,
+} from "@/lib/arenas";
 import {
   getWrappedIndex,
   isMenuBackKey,
@@ -24,7 +31,7 @@ const MAX_IDLE_FRAME_SCAN = 24;
 const IDLE_FRAME_MS = 120;
 
 type FightCharacterSelectProps = {
-  mode: "local" | "training";
+  mode: "local" | "training" | "arcade";
   initialFighterId?: string;
   initialOpponentId?: string;
   initialArenaId?: string;
@@ -235,10 +242,11 @@ function StageOptionCard({ arena, onSelect, selected }: StageOptionCardProps) {
 }
 
 function buildFightHref(
-  mode: "local" | "training",
+  mode: "local" | "training" | "arcade",
   fighterId: string,
   opponentId: string,
   arenaId: string,
+  arcadeOrder: string[] = [],
 ) {
   const params = new URLSearchParams({
     mode,
@@ -248,9 +256,28 @@ function buildFightHref(
 
   if (mode === "training") {
     params.set("opponent", opponentId);
+  } else if (mode === "arcade") {
+    if (arcadeOrder.length > 0) {
+      params.set("arcadeOrder", arcadeOrder.join(","));
+      params.set("arcadeIndex", "0");
+      params.set("opponent", arcadeOrder[0] ?? fighterId);
+    } else {
+      params.set("opponent", fighterId);
+    }
   }
 
   return `/fight?${params.toString()}`;
+}
+
+function shuffleFighterIds(fighterIds: string[]) {
+  const shuffledIds = [...fighterIds];
+
+  for (let index = shuffledIds.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffledIds[index], shuffledIds[swapIndex]] = [shuffledIds[swapIndex], shuffledIds[index]];
+  }
+
+  return shuffledIds;
 }
 
 export function FightCharacterSelect({
@@ -261,7 +288,9 @@ export function FightCharacterSelect({
   initialStep = "fighters",
 }: FightCharacterSelectProps) {
   const router = useRouter();
-  const [step, setStep] = useState<FightCharacterSelectStep>(initialStep);
+  const [step, setStep] = useState<FightCharacterSelectStep>(
+    mode === "arcade" ? "fighters" : initialStep,
+  );
   const [activeRoster, setActiveRoster] = useState<"fighter" | "opponent">("fighter");
   const [selectedFighterId, setSelectedFighterId] = useState(() =>
     initialFighterId && fighterRoster[initialFighterId] ? initialFighterId : fighters[0]?.id ?? "",
@@ -285,25 +314,48 @@ export function FightCharacterSelect({
     [selectedOpponentId],
   );
   const selectedArena = useMemo(() => getArena(selectedArenaId), [selectedArenaId]);
+  const arcadeOrder = useMemo(
+    () => mode === "arcade"
+      ? shuffleFighterIds(
+          fighters
+            .map((fighter) => fighter.id)
+            .filter((fighterId) => fighterId !== selectedFighterId),
+        )
+      : [],
+    [mode, selectedFighterId],
+  );
+  const arcadeArenaId = useMemo(
+    () => (mode === "arcade" ? pickRandomArenaId() : selectedArena.id),
+    [mode, selectedArena.id, selectedFighterId],
+  );
   const ctaLabel = step === "fighters"
-    ? "Select Stage"
+    ? mode === "arcade"
+      ? "Start Arcade"
+      : "Select Stage"
     : mode === "training"
       ? "Start Training"
+      : mode === "arcade"
+        ? "Start Arcade"
       : "Start Fight";
-  const ctaHref = selectedFighter && selectedOpponent && step === "stage"
+  const ctaHref = selectedFighter && selectedOpponent && (mode === "arcade" || step === "stage")
     ? buildFightHref(
         mode,
         selectedFighter.id,
         selectedOpponent.id,
-        selectedArena.id,
+        arcadeArenaId,
+        arcadeOrder,
       )
     : undefined;
   const matchupLabel = mode === "training"
     ? `${selectedFighter?.name ?? ""} vs ${selectedOpponent?.name ?? ""}`
+    : mode === "arcade"
+      ? `${selectedFighter?.name ?? ""} vs Arcade`
     : `${selectedFighter?.name ?? ""} vs Random`;
   const matchupHint = mode === "training"
     ? "Matchup locked. Pick the arena."
-    : "Opponent is rolled when the fight starts.";
+    : mode === "arcade"
+      ? "Arcade seeds the ladder on start and randomizes the stage each match."
+      : "Opponent is rolled when the fight starts.";
 
   useEffect(() => {
     let cancelled = false;
@@ -397,6 +449,11 @@ export function FightCharacterSelect({
 
         if (isMenuConfirmKey(event)) {
           event.preventDefault();
+          if (mode === "arcade" && ctaHref) {
+            router.push(ctaHref);
+            return;
+          }
+
           setStep("stage");
         }
         return;
@@ -549,7 +606,12 @@ export function FightCharacterSelect({
         <ArcadeMenuItem href="/" className="fight-character-select-back">
           {"<"}
         </ArcadeMenuItem>
-        <ArcadeMenuItem cta className="fight-character-select-cta" onClick={() => setStep("stage")}>
+        <ArcadeMenuItem
+          cta
+          className="fight-character-select-cta"
+          href={mode === "arcade" ? ctaHref : undefined}
+          onClick={mode === "arcade" ? undefined : () => setStep("stage")}
+        >
           {ctaLabel}
         </ArcadeMenuItem>
       </div>

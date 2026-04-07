@@ -208,7 +208,7 @@ function pickRandomMenuPair(previousPair?: [string, string]): [string, string] {
 }
 
 const menuEntries: MenuEntry[] = [
-  { href: "/fight?mode=local", label: "Fight" },
+  { href: "/fight?mode=arcade", label: "Arcade" },
   { href: "/fight?mode=training", label: "Training" },
   { href: "/online", label: "Find Match", disabled: true },
   { href: "/animation-lab", label: "Lab" },

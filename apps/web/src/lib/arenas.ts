@@ -33,3 +33,11 @@ export function getArena(id: string | null | undefined): ArenaDefinition {
 
   return arenaMap[defaultArenaId];
 }
+
+export function pickRandomArenaId(excludingArenaId?: string | null): ArenaId {
+  const availableArenas = arenas.filter((arena) => arena.id !== excludingArenaId);
+  const arenaPool = availableArenas.length > 0 ? availableArenas : arenas;
+  const randomIndex = Math.floor(Math.random() * arenaPool.length);
+
+  return arenaPool[randomIndex]?.id ?? defaultArenaId;
+}
