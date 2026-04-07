@@ -59,7 +59,7 @@ export const arenas = [
     id: 'fort-sterling-bridge',
     label: 'Fort Sterling',
     backgroundPath: '/arenas/fort-sterling-bridge.gif',
-    backgroundOffsetY: -36,
+    backgroundOffsetY: 36,
     audience: null,
   },
 ] as const;
