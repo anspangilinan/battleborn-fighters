@@ -1149,6 +1149,7 @@ function getParakWinCompanionState(
   state: MatchState,
   fighter: MatchState['fighters'][number],
   manifest: FighterAssetManifest | undefined,
+  combatOffsetY: number,
 ) {
   if (
     fighter.fighterId !== PARAK_WIN_COMPANION_FIGHTER_ID ||
@@ -1200,7 +1201,7 @@ function getParakWinCompanionState(
         ) % walkSources.length,
       ),
       x,
-      y: fighter.y + 6,
+      y: fighter.y + 6 + combatOffsetY,
       flipX,
       depth: 3.08,
     };
@@ -1221,7 +1222,7 @@ function getParakWinCompanionState(
     return {
       textureKey: getWinCompanionTextureKey(fighter.fighterId, 'finish', finishFrame),
       x: targetX,
-      y: fighter.y + 6,
+      y: fighter.y + 6 + combatOffsetY,
       flipX,
       depth: 3.08,
     };
@@ -1237,7 +1238,7 @@ function getParakWinCompanionState(
         ) % walkSources.length,
       ),
       x: targetX,
-      y: fighter.y + 6,
+      y: fighter.y + 6 + combatOffsetY,
       flipX,
       depth: 3.08,
     };
@@ -1386,6 +1387,7 @@ function renderOverchargeAura(
   definition: CharacterDefinition,
   matchFrame: number,
   layer: 'back' | 'front',
+  combatOffsetY: number,
 ) {
   if (fighter.overchargeActiveFrames <= 0) {
     return;
@@ -1395,7 +1397,7 @@ function renderOverchargeAura(
     getDashVisualLift(fighter, definition) +
     getSpecialHoverVisualLift(fighter, definition);
   const baseX = fighter.x;
-  const baseY = fighter.y + 6 - visualLift;
+  const baseY = fighter.y + 6 - visualLift + combatOffsetY;
   const pulse = 0.5 + 0.5 * Math.sin(matchFrame * 0.28 + fighter.slot * 1.9);
   const auraWidth = 36 + pulse * 7;
   const auraHeight = 78 + pulse * 11;
@@ -1508,6 +1510,34 @@ function renderOverchargeAura(
       matchFrame * 0.1,
     );
   }
+}
+
+function renderFighterGroundShadow(
+  graphics: any,
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+  combatOffsetY: number,
+  opacity: number,
+) {
+  if (opacity <= 0) {
+    return;
+  }
+
+  const renderHeight =
+    definition.sprites.renderHeight ?? defaultFighterRenderHeight;
+  const airborneHeight = Math.max(0, DEFAULT_CONFIG.groundY - fighter.y);
+  const compression = fighter.grounded
+    ? 1
+    : Math.max(0.42, 1 - airborneHeight / 220);
+  const alpha = opacity * (fighter.grounded ? 1 : 0.68 * compression);
+  const shadowY = DEFAULT_CONFIG.groundY + 8 + combatOffsetY;
+  const coreWidth = Math.max(22, renderHeight * 0.42 * compression);
+  const coreHeight = Math.max(7, renderHeight * 0.11 * compression);
+
+  graphics.fillStyle(0x0a1119, alpha * 0.84);
+  graphics.fillEllipse(fighter.x, shadowY, coreWidth, coreHeight);
+  graphics.fillStyle(0x101a25, alpha * 0.34);
+  graphics.fillEllipse(fighter.x, shadowY, coreWidth * 1.55, coreHeight * 1.8);
 }
 
 function getProjectileTextureKey(sprite: string) {
@@ -2457,11 +2487,12 @@ function renderFighterFallback(
   graphics: any,
   fighter: MatchState['fighters'][number],
   definition: CharacterDefinition,
+  combatOffsetY: number,
 ) {
   const headRadius = 18;
   const torsoHeight = 54;
   const baseX = fighter.x;
-  const baseY = fighter.y - getDashVisualLift(fighter, definition);
+  const baseY = fighter.y - getDashVisualLift(fighter, definition) + combatOffsetY;
   const direction = fighter.facing;
 
   graphics.fillStyle(colorToNumber(definition.palette.primary), 1);
@@ -2498,12 +2529,13 @@ function renderGuardOverlay(
   graphics: any,
   fighter: MatchState['fighters'][number],
   definition: CharacterDefinition,
+  combatOffsetY: number,
 ) {
   if (fighter.action !== 'guard') {
     return;
   }
 
-  const baseY = fighter.y - getDashVisualLift(fighter, definition);
+  const baseY = fighter.y - getDashVisualLift(fighter, definition) + combatOffsetY;
   const shieldX = fighter.x + fighter.facing * 18;
   const shieldY = baseY - 63;
 
@@ -2518,21 +2550,24 @@ function renderGuardOverlay(
 function renderProjectileFallback(
   graphics: any,
   projectile: MatchState['projectiles'][number],
+  combatOffsetY: number,
 ) {
+  const baseY = projectile.y + combatOffsetY;
+
   if (getProjectileSpriteName(projectile.sprite) === 'iceball') {
     graphics.fillStyle(0x5af6ff, 0.18);
-    graphics.fillCircle(projectile.x, projectile.y, 28);
+    graphics.fillCircle(projectile.x, baseY, 28);
     graphics.fillStyle(0x9ffcff, 0.34);
-    graphics.fillCircle(projectile.x, projectile.y, 20);
+    graphics.fillCircle(projectile.x, baseY, 20);
     graphics.lineStyle(5, 0xd9ffff, 0.85);
-    graphics.strokeCircle(projectile.x, projectile.y, 15);
+    graphics.strokeCircle(projectile.x, baseY, 15);
 
     graphics.lineStyle(4, 0x8de8ff, 0.5);
     graphics.beginPath();
-    graphics.moveTo(projectile.x - projectile.facing * 28, projectile.y - 10);
-    graphics.lineTo(projectile.x - projectile.facing * 8, projectile.y - 4);
-    graphics.moveTo(projectile.x - projectile.facing * 26, projectile.y + 8);
-    graphics.lineTo(projectile.x - projectile.facing * 10, projectile.y + 4);
+    graphics.moveTo(projectile.x - projectile.facing * 28, baseY - 10);
+    graphics.lineTo(projectile.x - projectile.facing * 8, baseY - 4);
+    graphics.moveTo(projectile.x - projectile.facing * 26, baseY + 8);
+    graphics.lineTo(projectile.x - projectile.facing * 10, baseY + 4);
     graphics.strokePath();
     return;
   }
@@ -2541,7 +2576,6 @@ function renderProjectileFallback(
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const baseX = projectile.x;
-  const baseY = projectile.y;
 
   graphics.lineStyle(8, 0x44dfff, 0.28);
   graphics.beginPath();
@@ -2923,7 +2957,10 @@ export function FightScene(props: FightSceneProps) {
     );
     const renderHeight =
       activeSpecial.definition.sprites.renderHeight ?? defaultFighterRenderHeight;
-    const focusTargetY = activeSpecial.fighter.y - renderHeight * 0.62;
+    const focusTargetY =
+      activeSpecial.fighter.y +
+      selectedArena.combatOffsetY -
+      renderHeight * 0.62;
     const focusedPanX =
       ((DEFAULT_CONFIG.width * 0.5 - activeSpecial.fighter.x * activeSpecial.zoomScale) /
         DEFAULT_CONFIG.width) *
@@ -2940,7 +2977,7 @@ export function FightScene(props: FightSceneProps) {
       panX: `${(focusedPanX * activeSpecial.buildUpProgress).toFixed(3)}%`,
       panY: `${(focusedPanY * activeSpecial.buildUpProgress).toFixed(3)}%`,
     };
-  }, [fighterAssetManifests, hudState]);
+  }, [fighterAssetManifests, hudState, selectedArena.combatOffsetY]);
 
   const overchargeActivationFlashes = useMemo(() => {
     if (!hudState) {
@@ -2970,7 +3007,11 @@ export function FightScene(props: FightSceneProps) {
           key: `${fighter.slot}-${hudState.frame}`,
           xPercent: (fighter.x / DEFAULT_CONFIG.width) * 100,
           yPercent:
-            ((fighter.y + 6 - visualLift - renderHeight * 0.56) /
+            ((fighter.y +
+              6 +
+              selectedArena.combatOffsetY -
+              visualLift -
+              renderHeight * 0.56) /
               DEFAULT_CONFIG.height) *
             100,
           intensity,
@@ -2986,7 +3027,7 @@ export function FightScene(props: FightSceneProps) {
         },
       ] satisfies OverchargeActivationFlash[];
     });
-  }, [hudState]);
+  }, [hudState, selectedArena.combatOffsetY]);
 
   const specialCinematicStyle = activeSpecialCinematic
     ? ({
@@ -3472,6 +3513,7 @@ export function FightScene(props: FightSceneProps) {
           projectile: MatchState['projectiles'][number],
           textureKey: string,
           scale: number,
+          combatOffsetY: number,
         ) {
           const trailAlphas = getProjectileTrailAlphas(projectile);
           const trailScales = getProjectileTrailScales(projectile);
@@ -3520,7 +3562,10 @@ export function FightScene(props: FightSceneProps) {
             trailSprite.setOrigin(0.5, 0.5);
             trailSprite.setPosition(
               projectile.x - directionX * offset + perpendicularX * perpendicularOffset,
-              projectile.y - directionY * offset + perpendicularY * perpendicularOffset,
+              projectile.y +
+                combatOffsetY -
+                directionY * offset +
+                perpendicularY * perpendicularOffset,
             );
             trailSprite.setRotation(rotation);
             trailSprite.setScale(scale * trailScale);
@@ -3765,6 +3810,7 @@ export function FightScene(props: FightSceneProps) {
               state,
               fighter,
               manifest,
+              selectedArena.combatOffsetY,
             );
             const activeStance = getAvailableAnimationStance(
               state,
@@ -3812,6 +3858,14 @@ export function FightScene(props: FightSceneProps) {
               return;
             }
 
+            renderFighterGroundShadow(
+              this.overchargeBackGraphics,
+              fighter,
+              definition,
+              selectedArena.combatOffsetY,
+              selectedArena.groundShadowOpacity,
+            );
+
             if (activeStance && manifest) {
               const frames = manifest.stanceSources[activeStance];
               const frameIndex = getAnimationFrameIndex(
@@ -3834,14 +3888,21 @@ export function FightScene(props: FightSceneProps) {
                   definition,
                   state.frame,
                   'back',
+                  selectedArena.combatOffsetY,
                 );
-                renderFighterFallback(this.fighterGraphics, fighter, definition);
+                renderFighterFallback(
+                  this.fighterGraphics,
+                  fighter,
+                  definition,
+                  selectedArena.combatOffsetY,
+                );
                 renderOverchargeAura(
                   this.overchargeFrontGraphics,
                   fighter,
                   definition,
                   state.frame,
                   'front',
+                  selectedArena.combatOffsetY,
                 );
                 return;
               }
@@ -3853,7 +3914,11 @@ export function FightScene(props: FightSceneProps) {
                   defaultFighterRenderHeight) / sourceImage.height;
               const fighterSprite =
                 existingSprite ??
-                this.add.image(fighter.x, fighter.y + 6, textureKey);
+                this.add.image(
+                  fighter.x,
+                  fighter.y + 6 + selectedArena.combatOffsetY,
+                  textureKey,
+                );
               const visualLift =
                 getDashVisualLift(fighter, definition) +
                 getSpecialHoverVisualLift(fighter, definition);
@@ -3872,7 +3937,10 @@ export function FightScene(props: FightSceneProps) {
               fighterSprite.setVisible(true);
               fighterSprite.setDepth(3);
               fighterSprite.setOrigin(0.5, 1);
-              fighterSprite.setPosition(fighter.x, fighter.y + 6 - visualLift);
+              fighterSprite.setPosition(
+                fighter.x,
+                fighter.y + 6 - visualLift + selectedArena.combatOffsetY,
+              );
               fighterSprite.setFlipX(fighter.facing < 0);
               fighterSprite.setScale(
                 spriteScale * (1 + overchargePulse * 0.03) * activationPulse,
@@ -3891,14 +3959,21 @@ export function FightScene(props: FightSceneProps) {
                 definition,
                 state.frame,
                 'back',
+                selectedArena.combatOffsetY,
               );
-              renderGuardOverlay(this.fighterGraphics, fighter, definition);
+              renderGuardOverlay(
+                this.fighterGraphics,
+                fighter,
+                definition,
+                selectedArena.combatOffsetY,
+              );
               renderOverchargeAura(
                 this.overchargeFrontGraphics,
                 fighter,
                 definition,
                 state.frame,
                 'front',
+                selectedArena.combatOffsetY,
               );
             } else {
               existingSprite?.setVisible(false);
@@ -3908,14 +3983,21 @@ export function FightScene(props: FightSceneProps) {
                 definition,
                 state.frame,
                 'back',
+                selectedArena.combatOffsetY,
               );
-              renderFighterFallback(this.fighterGraphics, fighter, definition);
+              renderFighterFallback(
+                this.fighterGraphics,
+                fighter,
+                definition,
+                selectedArena.combatOffsetY,
+              );
               renderOverchargeAura(
                 this.overchargeFrontGraphics,
                 fighter,
                 definition,
                 state.frame,
                 'front',
+                selectedArena.combatOffsetY,
               );
             }
           });
@@ -3939,7 +4021,11 @@ export function FightScene(props: FightSceneProps) {
             const existingSprite = this.projectileSprites.get(projectile.id);
 
             if (!this.textures.exists(textureKey)) {
-              renderProjectileFallback(this.projectileGraphics, projectile);
+              renderProjectileFallback(
+                this.projectileGraphics,
+                projectile,
+                selectedArena.combatOffsetY,
+              );
               existingSprite?.setVisible(false);
               this.clearProjectileTrailSprites(projectile.id);
               return;
@@ -3951,13 +4037,20 @@ export function FightScene(props: FightSceneProps) {
             const spriteScale = getProjectileSpriteScale(projectile, sourceImage);
             const projectileSprite =
               existingSprite ??
-              this.add.image(projectile.x, projectile.y, textureKey);
+              this.add.image(
+                projectile.x,
+                projectile.y + selectedArena.combatOffsetY,
+                textureKey,
+              );
 
             projectileSprite.setTexture(textureKey);
             projectileSprite.setVisible(true);
             projectileSprite.setDepth(4);
             projectileSprite.setOrigin(0.5, 0.5);
-            projectileSprite.setPosition(projectile.x, projectile.y);
+            projectileSprite.setPosition(
+              projectile.x,
+              projectile.y + selectedArena.combatOffsetY,
+            );
             projectileSprite.setRotation(
               Math.atan2(projectile.vy, projectile.vx),
             );
@@ -3968,6 +4061,7 @@ export function FightScene(props: FightSceneProps) {
               projectile,
               textureKey,
               spriteScale,
+              selectedArena.combatOffsetY,
             );
           });
         }

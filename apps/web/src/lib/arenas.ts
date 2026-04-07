@@ -53,6 +53,8 @@ export const arenas = [
     label: 'Underway',
     backgroundPath: '/arenas/underway.gif',
     backgroundOffsetY: 0,
+    combatOffsetY: 0,
+    groundShadowOpacity: 0,
     audience: underwayAudience,
   },
   {
@@ -60,6 +62,8 @@ export const arenas = [
     label: 'Fort Sterling',
     backgroundPath: '/arenas/fort-sterling-bridge.gif',
     backgroundOffsetY: 36,
+    combatOffsetY: 12,
+    groundShadowOpacity: 0.34,
     audience: null,
   },
 ] as const;
