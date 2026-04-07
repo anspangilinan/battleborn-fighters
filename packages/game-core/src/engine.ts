@@ -16,12 +16,28 @@ export const FPS = 60;
 const DASH_TAP_WINDOW_FRAMES = 10;
 const DEFAULT_ATTACK_PROJECTILE_TIER = 1;
 const DEFAULT_CHIP_DAMAGE_RATIO = 0.05;
+const DEFAULT_RECOVERABLE_DAMAGE_RATIO = 0.35;
 const BLOCK_MELEE_THREAT_GAP = 22;
 const BLOCK_PROJECTILE_THREAT_FRAMES = 4;
 const ROUND_OVER_MIN_FRAMES = FPS * 3;
 const COMBO_TIMEOUT_FRAMES = Math.round(FPS * 0.5);
 const JUGGLE_DROP_RECOVERY_FRAMES = Math.round(FPS * 0.5);
 const JUGGLE_GRAVITY_MULTIPLIER = 0.68;
+const OVERCHARGE_DAMAGE_MULTIPLIER = 1.25;
+const OVERCHARGE_MOVEMENT_MULTIPLIER = 1.18;
+const OVERCHARGE_ACTIVATION_FRAMES = 20;
+const OVERCHARGE_HIT_DONE_METER_BASE = 2;
+const OVERCHARGE_HIT_DONE_METER_MULTIPLIER = 0.06;
+const OVERCHARGE_HIT_TAKEN_METER_BASE = 3;
+const OVERCHARGE_HIT_TAKEN_METER_MULTIPLIER = 0.08;
+const OVERCHARGE_BLOCK_DONE_METER_BASE = 1.5;
+const OVERCHARGE_BLOCK_DONE_METER_MULTIPLIER = 0.04;
+const OVERCHARGE_BLOCK_TAKEN_METER_BASE = 2;
+const OVERCHARGE_BLOCK_TAKEN_METER_MULTIPLIER = 0.05;
+const OVERCHARGE_REGEN_PER_SECOND_RATIO = 0.02;
+
+export const MAX_OVERCHARGE_METER = 100;
+export const OVERCHARGE_DURATION_FRAMES = FPS * 12;
 
 export const DEFAULT_CONFIG: MatchConfig = {
   width: 960,
@@ -39,6 +55,7 @@ export const EMPTY_INPUT: InputState = {
   punch: false,
   kick: false,
   special: false,
+  overcharge: false,
 };
 
 export function cloneInput(input?: Partial<InputState>): InputState {
@@ -52,7 +69,8 @@ export function encodeInput(input: InputState): number {
     (input.guard ? 1 << 3 : 0) |
     (input.punch ? 1 << 4 : 0) |
     (input.kick ? 1 << 5 : 0) |
-    (input.special ? 1 << 6 : 0);
+    (input.special ? 1 << 6 : 0) |
+    (input.overcharge ? 1 << 7 : 0);
 }
 
 export function decodeInput(mask: number): InputState {
@@ -64,6 +82,7 @@ export function decodeInput(mask: number): InputState {
     punch: Boolean(mask & (1 << 4)),
     kick: Boolean(mask & (1 << 5)),
     special: Boolean(mask & (1 << 6)),
+    overcharge: Boolean(mask & (1 << 7)),
   };
 }
 
@@ -133,6 +152,7 @@ function createFighterState(
     action: "idle",
     actionFrames: 0,
     health: definition.stats.maxHealth,
+    recoverableHealth: 0,
     attackId: null,
     attackFrame: 0,
     specialMovePhase: null,
@@ -147,7 +167,11 @@ function createFighterState(
     comboTimerFrames: 0,
     wins: 0,
     ready: false,
-    meter: 0,
+    overchargeMeter: 0,
+    overchargeActiveFrames: 0,
+    overchargeActivationFrames: 0,
+    recoverableRegenAccumulator: 0,
+    airJumpsRemaining: 0,
     moveCooldownFrames: Object.fromEntries(
       Object.entries(definition.moves).map(([moveId, move]) => [moveId, getInitialMoveCooldownFrames(move)]),
     ),
@@ -160,7 +184,7 @@ export function resetRound(
   roster: Record<string, CharacterDefinition>,
   config: MatchConfig = DEFAULT_CONFIG,
 ): MatchState {
-  return createMatchState(
+  const nextRound = createMatchState(
     roster,
     state.fighters[0].fighterId,
     state.fighters[1].fighterId,
@@ -168,6 +192,10 @@ export function resetRound(
     state.fighters[1].name,
     config,
   );
+
+  nextRound.fighters[0].overchargeMeter = state.fighters[0].overchargeMeter;
+  nextRound.fighters[1].overchargeMeter = state.fighters[1].overchargeMeter;
+  return nextRound;
 }
 
 export function stepMatch(
@@ -278,6 +306,9 @@ export function stepMatch(
     }
   }
 
+  finalizeFighterFrame(state.fighters[0], definitionA, state.status);
+  finalizeFighterFrame(state.fighters[1], definitionB, state.status);
+
   state.fighters[0].lastInput = cloneInput(inputA);
   state.fighters[1].lastInput = cloneInput(inputB);
   return state;
@@ -319,7 +350,8 @@ function hasFreshInput(
     (currentInput.guard && !previousInput.guard) ||
     (currentInput.punch && !previousInput.punch) ||
     (currentInput.kick && !previousInput.kick) ||
-    (currentInput.special && !previousInput.special);
+    (currentInput.special && !previousInput.special) ||
+    (currentInput.overcharge && !previousInput.overcharge);
 }
 
 function shouldAdvanceRoundOver(
@@ -345,6 +377,141 @@ function tickComboState(fighter: FighterRuntimeState) {
   fighter.comboTimerFrames = Math.max(0, fighter.comboTimerFrames - 1);
   if (fighter.comboTimerFrames === 0) {
     clearComboState(fighter);
+  }
+}
+
+function isOverchargeActive(fighter: FighterRuntimeState) {
+  return fighter.overchargeActiveFrames > 0;
+}
+
+function getOverchargeDamageMultiplier(fighter: FighterRuntimeState) {
+  return isOverchargeActive(fighter) ? OVERCHARGE_DAMAGE_MULTIPLIER : 1;
+}
+
+function getOverchargeMovementMultiplier(fighter: FighterRuntimeState) {
+  return isOverchargeActive(fighter) ? OVERCHARGE_MOVEMENT_MULTIPLIER : 1;
+}
+
+function getOverchargeMeterGain(
+  interaction: "hit-done" | "hit-taken" | "block-done" | "block-taken",
+  interactionDamage: number,
+) {
+  switch (interaction) {
+    case "hit-done":
+      return OVERCHARGE_HIT_DONE_METER_BASE + interactionDamage * OVERCHARGE_HIT_DONE_METER_MULTIPLIER;
+    case "hit-taken":
+      return OVERCHARGE_HIT_TAKEN_METER_BASE + interactionDamage * OVERCHARGE_HIT_TAKEN_METER_MULTIPLIER;
+    case "block-done":
+      return OVERCHARGE_BLOCK_DONE_METER_BASE + interactionDamage * OVERCHARGE_BLOCK_DONE_METER_MULTIPLIER;
+    case "block-taken":
+      return OVERCHARGE_BLOCK_TAKEN_METER_BASE + interactionDamage * OVERCHARGE_BLOCK_TAKEN_METER_MULTIPLIER;
+  }
+}
+
+function gainOverchargeMeter(
+  fighter: FighterRuntimeState,
+  amount: number,
+) {
+  if (amount <= 0 || fighter.health <= 0 || isOverchargeActive(fighter)) {
+    return;
+  }
+
+  fighter.overchargeMeter = Math.min(MAX_OVERCHARGE_METER, fighter.overchargeMeter + amount);
+}
+
+function getDamageAmount(
+  hitbox: HitBox,
+  attacker: FighterRuntimeState,
+) {
+  return Math.max(1, Math.round(hitbox.damage * getOverchargeDamageMultiplier(attacker)));
+}
+
+function getChipDamage(
+  hitbox: HitBox,
+  attacker: FighterRuntimeState,
+) {
+  const baseChipDamage = hitbox.chipDamage ?? Math.max(1, Math.round(hitbox.damage * DEFAULT_CHIP_DAMAGE_RATIO));
+  return Math.max(1, Math.round(baseChipDamage * getOverchargeDamageMultiplier(attacker)));
+}
+
+function getRecoverableDamage(damage: number, blocked: boolean) {
+  if (damage <= 0) {
+    return 0;
+  }
+
+  if (blocked) {
+    return damage;
+  }
+
+  return Math.max(1, Math.round(damage * DEFAULT_RECOVERABLE_DAMAGE_RATIO));
+}
+
+function addRecoverableHealth(
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+  amount: number,
+) {
+  if (amount <= 0 || fighter.health <= 0) {
+    return;
+  }
+
+  const maxRecoverableHealth = Math.max(0, definition.stats.maxHealth - fighter.health);
+  fighter.recoverableHealth = Math.min(maxRecoverableHealth, fighter.recoverableHealth + amount);
+}
+
+function clearOverchargeState(fighter: FighterRuntimeState) {
+  fighter.overchargeActiveFrames = 0;
+  fighter.overchargeActivationFrames = 0;
+  fighter.recoverableRegenAccumulator = 0;
+  fighter.airJumpsRemaining = 0;
+}
+
+function finalizeFighterFrame(
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+  matchStatus: MatchState["status"],
+) {
+  if (fighter.health <= 0) {
+    fighter.recoverableHealth = 0;
+    clearOverchargeState(fighter);
+    return;
+  }
+
+  if (matchStatus !== "fighting") {
+    fighter.recoverableRegenAccumulator = 0;
+    clearOverchargeState(fighter);
+    return;
+  }
+
+  if (fighter.recoverableHealth > 0 && isOverchargeActive(fighter)) {
+    fighter.recoverableRegenAccumulator +=
+      (definition.stats.maxHealth * OVERCHARGE_REGEN_PER_SECOND_RATIO) / FPS;
+    const healAmount = Math.min(
+      fighter.recoverableHealth,
+      Math.floor(fighter.recoverableRegenAccumulator),
+    );
+
+    if (healAmount > 0) {
+      fighter.health = Math.min(definition.stats.maxHealth, fighter.health + healAmount);
+      fighter.recoverableHealth = Math.max(0, fighter.recoverableHealth - healAmount);
+      fighter.recoverableRegenAccumulator -= healAmount;
+    }
+  } else {
+    fighter.recoverableRegenAccumulator = 0;
+  }
+
+  if (fighter.overchargeActivationFrames > 0) {
+    fighter.overchargeActivationFrames = Math.max(0, fighter.overchargeActivationFrames - 1);
+  }
+
+  if (fighter.overchargeActiveFrames > 0) {
+    fighter.overchargeActiveFrames = Math.max(0, fighter.overchargeActiveFrames - 1);
+  }
+
+  if (fighter.grounded) {
+    fighter.airJumpsRemaining = isOverchargeActive(fighter) ? 1 : 0;
+  } else if (!isOverchargeActive(fighter)) {
+    fighter.airJumpsRemaining = 0;
   }
 }
 
@@ -428,6 +595,38 @@ function unlockFollowUpMove(
   attacker.pendingFollowUpMoveId = move.followUpMoveId;
 }
 
+function canActivateOvercharge(
+  fighter: FighterRuntimeState,
+  input: InputState,
+) {
+  return fighter.health > 0 &&
+    fighter.overchargeActiveFrames === 0 &&
+    fighter.overchargeMeter >= MAX_OVERCHARGE_METER &&
+    input.overcharge &&
+    !fighter.lastInput.overcharge;
+}
+
+function activateOvercharge(
+  state: MatchState,
+  fighter: FighterRuntimeState,
+) {
+  interruptAttack(fighter);
+  cancelDash(fighter);
+  clearComboState(fighter);
+  fighter.hitstun = 0;
+  fighter.invulnerableFrames = 0;
+  fighter.juggleState = null;
+  fighter.overchargeMeter = 0;
+  fighter.overchargeActiveFrames = OVERCHARGE_DURATION_FRAMES;
+  fighter.overchargeActivationFrames = OVERCHARGE_ACTIVATION_FRAMES;
+  fighter.recoverableRegenAccumulator = 0;
+  if (!fighter.grounded) {
+    fighter.airJumpsRemaining = Math.max(fighter.airJumpsRemaining, 1);
+  }
+
+  state.events.push(`${fighter.name} activated Overcharge`);
+}
+
 function updateFighter(
   state: MatchState,
   fighter: FighterRuntimeState,
@@ -438,14 +637,18 @@ function updateFighter(
   config: MatchConfig,
   frozenBySpecialCinematic = false,
 ) {
-  if (frozenBySpecialCinematic) {
-    return;
-  }
-
   const previousAction = fighter.action;
   fighter.lastTapFrame = Math.min(fighter.lastTapFrame + 1, DASH_TAP_WINDOW_FRAMES + 1);
   tickMoveCooldowns(fighter, definition);
   tickComboState(fighter);
+  if (canActivateOvercharge(fighter, input) && state.status === "fighting" && !frozenBySpecialCinematic) {
+    activateOvercharge(state, fighter);
+  }
+
+  if (frozenBySpecialCinematic) {
+    return;
+  }
+
   const activeMove = fighter.attackId ? definition.moves[fighter.attackId] : null;
   const recoveringFromJuggle = fighter.juggleState === "recovery" && fighter.invulnerableFrames > 0;
 
@@ -475,6 +678,12 @@ function updateFighter(
     fighter.hitstun -= 1;
     fighter.action = "hit";
     fighter.vx *= 0.9;
+  } else if (fighter.overchargeActivationFrames > 0) {
+    interruptAttack(fighter);
+    cancelDash(fighter);
+    fighter.vx *= fighter.grounded ? 0.3 : 0.86;
+    fighter.vy = fighter.grounded ? 0 : fighter.vy * 0.5;
+    fighter.action = fighter.grounded ? "idle" : "jump";
   } else if (fighter.attackId) {
     if (fighter.hitstun > 0) {
       fighter.hitstun -= 1;
@@ -936,11 +1145,20 @@ function getProjectileVerticalMotion(
 
 function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDefinition, input: InputState) {
   const direction = Number(input.right) - Number(input.left);
+  const movementMultiplier = getOverchargeMovementMultiplier(fighter);
 
   if (fighter.grounded && input.up && !fighter.lastInput.up) {
     cancelDash(fighter);
-    fighter.vy = -definition.stats.movement.jumpVelocity;
+    fighter.vy = -definition.stats.movement.jumpVelocity * movementMultiplier;
     fighter.grounded = false;
+    fighter.action = "jump";
+    return;
+  }
+
+  if (!fighter.grounded && input.up && !fighter.lastInput.up && fighter.airJumpsRemaining > 0) {
+    cancelDash(fighter);
+    fighter.airJumpsRemaining = Math.max(0, fighter.airJumpsRemaining - 1);
+    fighter.vy = -definition.stats.movement.jumpVelocity * movementMultiplier;
     fighter.action = "jump";
     return;
   }
@@ -953,11 +1171,17 @@ function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDef
     } else if (tappedRight) {
       registerDashTap(fighter, definition, 1);
     }
+  } else if (fighter.airJumpsRemaining > 0) {
+    if (tappedLeft) {
+      registerDashTap(fighter, definition, -1, true);
+    } else if (tappedRight) {
+      registerDashTap(fighter, definition, 1, true);
+    }
   }
 
   if (fighter.dashFramesRemaining > 0) {
     fighter.dashFramesRemaining -= 1;
-    fighter.vx = fighter.dashDirection * getDashSpeed(definition);
+    fighter.vx = fighter.dashDirection * getDashSpeed(fighter, definition);
     fighter.action = "dash";
     if (fighter.dashFramesRemaining === 0) {
       fighter.dashDirection = 0;
@@ -973,7 +1197,7 @@ function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDef
     return;
   }
 
-  fighter.vx = direction * definition.stats.movement.walkSpeed;
+  fighter.vx = direction * definition.stats.movement.walkSpeed * movementMultiplier;
   if (direction !== 0) {
     fighter.action = "walk";
   } else {
@@ -982,10 +1206,18 @@ function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDef
   }
 }
 
-function registerDashTap(fighter: FighterRuntimeState, definition: CharacterDefinition, direction: Facing) {
+function registerDashTap(
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+  direction: Facing,
+  consumesAirJump = false,
+) {
   const withinWindow = fighter.lastTapDirection === direction && fighter.lastTapFrame <= DASH_TAP_WINDOW_FRAMES;
 
   if (withinWindow) {
+    if (consumesAirJump) {
+      fighter.airJumpsRemaining = Math.max(0, fighter.airJumpsRemaining - 1);
+    }
     fighter.dashDirection = direction;
     fighter.dashFramesRemaining = getDashDurationFrames(definition);
     fighter.lastTapDirection = 0;
@@ -1002,8 +1234,8 @@ function cancelDash(fighter: FighterRuntimeState) {
   fighter.dashFramesRemaining = 0;
 }
 
-function getDashSpeed(definition: CharacterDefinition) {
-  return definition.stats.movement.dash.speed;
+function getDashSpeed(fighter: FighterRuntimeState, definition: CharacterDefinition) {
+  return definition.stats.movement.dash.speed * getOverchargeMovementMultiplier(fighter);
 }
 
 export function getDashDurationFrames(definition: CharacterDefinition) {
@@ -1080,7 +1312,7 @@ function canDashPassThrough(
     return false;
   }
 
-  const projectedLandingX = fighter.x + fighter.dashDirection * getDashSpeed(definition) * fighter.dashFramesRemaining;
+  const projectedLandingX = fighter.x + fighter.dashDirection * getDashSpeed(fighter, definition) * fighter.dashFramesRemaining;
 
   if (fighter.dashDirection > 0) {
     return fighter.x <= opponent.x && projectedLandingX > opponent.x;
@@ -1113,10 +1345,6 @@ function resolveFacing(fighterA: FighterRuntimeState, fighterB: FighterRuntimeSt
     fighterA.facing = -1;
     fighterB.facing = 1;
   }
-}
-
-function getChipDamage(hitbox: HitBox) {
-  return hitbox.chipDamage ?? Math.max(1, Math.round(hitbox.damage * DEFAULT_CHIP_DAMAGE_RATIO));
 }
 
 function getHorizontalBoxGap(a: Box, b: Box) {
@@ -1312,7 +1540,14 @@ function resolveHits(
     }
 
     if (canBlockIncomingHit(defender, attacker.facing)) {
-      defender.health = Math.max(0, defender.health - getChipDamage(hitbox));
+      const interactionDamage = getDamageAmount(hitbox, attacker);
+      const chipDamage = getChipDamage(hitbox, attacker);
+      defender.health = Math.max(0, defender.health - chipDamage);
+      addRecoverableHealth(
+        defender,
+        defenderDef,
+        getRecoverableDamage(chipDamage, true),
+      );
       defender.hitstun = 0;
       defender.vx = 0;
       defender.vy = 0;
@@ -1320,15 +1555,27 @@ function resolveHits(
       defender.juggleState = null;
       defender.invulnerableFrames = 0;
       defender.action = defender.health <= 0 ? "ko" : "guard";
+      if (defender.health <= 0) {
+        defender.recoverableHealth = 0;
+        clearOverchargeState(defender);
+        clearComboState(defender);
+      }
       attacker.attackConnected = true;
       unlockFollowUpMove(attacker, move);
-      attacker.meter = Math.min(100, attacker.meter + 12);
+      gainOverchargeMeter(attacker, getOverchargeMeterGain("block-done", interactionDamage));
+      gainOverchargeMeter(defender, getOverchargeMeterGain("block-taken", interactionDamage));
       state.events.push(`${defender.name} blocked ${move.label}`);
       return;
     }
 
     interruptAttack(defender);
-    defender.health = Math.max(0, defender.health - hitbox.damage);
+    const damage = getDamageAmount(hitbox, attacker);
+    defender.health = Math.max(0, defender.health - damage);
+    addRecoverableHealth(
+      defender,
+      defenderDef,
+      getRecoverableDamage(damage, false),
+    );
     defender.hitstun = hitbox.hitstun;
     defender.vx = hitbox.knockbackX * attacker.facing;
     defender.vy = -(hitbox.launchY ?? 0);
@@ -1336,6 +1583,8 @@ function resolveHits(
     if (defender.health <= 0) {
       defender.juggleState = null;
       defender.invulnerableFrames = 0;
+      defender.recoverableHealth = 0;
+      clearOverchargeState(defender);
       clearComboState(defender);
       defender.action = "ko";
     } else {
@@ -1349,7 +1598,8 @@ function resolveHits(
     }
     attacker.attackConnected = true;
     unlockFollowUpMove(attacker, move);
-    attacker.meter = Math.min(100, attacker.meter + 12);
+    gainOverchargeMeter(attacker, getOverchargeMeterGain("hit-done", damage));
+    gainOverchargeMeter(defender, getOverchargeMeterGain("hit-taken", damage));
     state.events.push(`${attacker.name} landed ${move.label}`);
     return;
   }
@@ -1477,7 +1727,14 @@ function resolveProjectileHits(
     }
 
     if (canBlockIncomingHit(defender, projectile.facing)) {
-      defender.health = Math.max(0, defender.health - getChipDamage(projectile.hitbox));
+      const interactionDamage = getDamageAmount(projectile.hitbox, attacker);
+      const chipDamage = getChipDamage(projectile.hitbox, attacker);
+      defender.health = Math.max(0, defender.health - chipDamage);
+      addRecoverableHealth(
+        defender,
+        defenderDef,
+        getRecoverableDamage(chipDamage, true),
+      );
       defender.hitstun = 0;
       defender.vx = 0;
       defender.vy = 0;
@@ -1485,6 +1742,13 @@ function resolveProjectileHits(
       defender.juggleState = null;
       defender.invulnerableFrames = 0;
       defender.action = defender.health <= 0 ? "ko" : "guard";
+      if (defender.health <= 0) {
+        defender.recoverableHealth = 0;
+        clearOverchargeState(defender);
+        clearComboState(defender);
+      }
+      gainOverchargeMeter(attacker, getOverchargeMeterGain("block-done", interactionDamage));
+      gainOverchargeMeter(defender, getOverchargeMeterGain("block-taken", interactionDamage));
       unlockFollowUpMove(attacker, move);
       if (move) {
         state.events.push(`${defender.name} blocked ${move.label}`);
@@ -1493,7 +1757,13 @@ function resolveProjectileHits(
     }
 
     interruptAttack(defender);
-    defender.health = Math.max(0, defender.health - projectile.hitbox.damage);
+    const damage = getDamageAmount(projectile.hitbox, attacker);
+    defender.health = Math.max(0, defender.health - damage);
+    addRecoverableHealth(
+      defender,
+      defenderDef,
+      getRecoverableDamage(damage, false),
+    );
     defender.hitstun = projectile.hitbox.hitstun;
     defender.vx = projectile.hitbox.knockbackX * projectile.facing;
     defender.vy = -(projectile.hitbox.launchY ?? 0);
@@ -1501,6 +1771,8 @@ function resolveProjectileHits(
     if (defender.health <= 0) {
       defender.juggleState = null;
       defender.invulnerableFrames = 0;
+      defender.recoverableHealth = 0;
+      clearOverchargeState(defender);
       clearComboState(defender);
       defender.action = "ko";
     } else {
@@ -1512,7 +1784,8 @@ function resolveProjectileHits(
       defender.action = "hit";
       registerComboHit(attacker, defender);
     }
-    attacker.meter = Math.min(100, attacker.meter + 12);
+    gainOverchargeMeter(attacker, getOverchargeMeterGain("hit-done", damage));
+    gainOverchargeMeter(defender, getOverchargeMeterGain("hit-taken", damage));
     unlockFollowUpMove(attacker, move);
     if (move) {
       state.events.push(`${attacker.name} landed ${move.label}`);
@@ -1523,7 +1796,11 @@ function resolveProjectileHits(
 }
 
 function getHurtboxes(fighter: FighterRuntimeState, definition: CharacterDefinition): Box[] {
-  if (fighter.action === "dash" || fighter.invulnerableFrames > 0) {
+  if (
+    fighter.action === "dash" ||
+    fighter.invulnerableFrames > 0 ||
+    fighter.overchargeActivationFrames > 0
+  ) {
     return [];
   }
 

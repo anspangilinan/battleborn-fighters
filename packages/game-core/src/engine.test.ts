@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_CONFIG, EMPTY_INPUT, FPS, cloneInput, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
+import { DEFAULT_CONFIG, EMPTY_INPUT, FPS, MAX_OVERCHARGE_METER, OVERCHARGE_DURATION_FRAMES, cloneInput, createMatchState, decodeInput, encodeInput, getDashDurationFrames, getMoveCooldownFrames, getMoveMeleeRange, stepMatch } from "./engine";
 import type { CharacterDefinition, InputState } from "./types";
 
 const fighter: CharacterDefinition = {
@@ -445,8 +445,167 @@ const extendedRangeFighter: CharacterDefinition = {
 };
 
 test("input encoding round-trips", () => {
-  const mask = encodeInput(input({ left: true, up: true, punch: true, special: true }));
-  assert.deepEqual(decodeInput(mask), input({ left: true, up: true, punch: true, special: true }));
+  const mask = encodeInput(input({ left: true, up: true, punch: true, special: true, overcharge: true }));
+  assert.deepEqual(decodeInput(mask), input({ left: true, up: true, punch: true, special: true, overcharge: true }));
+});
+
+test("landed hits create recoverable health and build overcharge for both fighters", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 330;
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 50);
+  assert.equal(state.fighters[1].recoverableHealth, 18);
+  assert.equal(state.fighters[0].overchargeMeter, 5);
+  assert.equal(state.fighters[1].overchargeMeter, 7);
+});
+
+test("overcharge boosts movement, boosts damage, and regenerates recoverable health", () => {
+  const movementDummy = createOffPathDummy("movement-dummy");
+  const roster = {
+    [fighter.id]: fighter,
+    [movementDummy.id]: movementDummy,
+  };
+  let movementState = createMatchState(
+    roster,
+    fighter.id,
+    movementDummy.id,
+  );
+  movementState.countdownFrames = 0;
+  movementState.status = "fighting";
+  movementState.fighters[0].overchargeActiveFrames = 10;
+  movementState.fighters[0].x = 240;
+  movementState.fighters[1].x = 760;
+
+  movementState = stepMatch(
+    movementState,
+    roster,
+    input({ right: true }),
+    EMPTY_INPUT,
+  );
+
+  assert.ok(Math.abs(movementState.fighters[0].x - (240 + fighter.stats.movement.walkSpeed * 1.18)) < 0.001);
+
+  const damageRoster = { [fighter.id]: fighter };
+  let damageState = createMatchState(damageRoster, fighter.id, fighter.id);
+  damageState.countdownFrames = 0;
+  damageState.status = "fighting";
+  damageState.fighters[0].overchargeActiveFrames = 10;
+  damageState.fighters[0].x = 300;
+  damageState.fighters[1].x = 330;
+
+  damageState = stepMatch(damageState, damageRoster, input({ punch: true }), EMPTY_INPUT);
+  damageState = stepMatch(damageState, damageRoster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(damageState.fighters[1].health, fighter.stats.maxHealth - 63);
+  assert.equal(damageState.fighters[1].recoverableHealth, 22);
+
+  let regenState = createMatchState(damageRoster, fighter.id, fighter.id);
+  regenState.countdownFrames = 0;
+  regenState.status = "fighting";
+  regenState.fighters[0].overchargeMeter = MAX_OVERCHARGE_METER;
+  regenState.fighters[0].health = 700;
+  regenState.fighters[0].recoverableHealth = 120;
+
+  regenState = stepMatch(regenState, damageRoster, input({ overcharge: true }), EMPTY_INPUT);
+
+  assert.equal(regenState.fighters[0].overchargeMeter, 0);
+  assert.ok(regenState.fighters[0].overchargeActiveFrames > 0);
+
+  for (let index = 0; index < 12; index += 1) {
+    regenState = stepMatch(regenState, damageRoster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.ok(regenState.fighters[0].health > 700);
+  assert.ok(regenState.fighters[0].recoverableHealth < 120);
+  assert.ok(regenState.fighters[0].overchargeActiveFrames < OVERCHARGE_DURATION_FRAMES);
+});
+
+test("overcharge grants a single extra air jump", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].overchargeMeter = MAX_OVERCHARGE_METER;
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 760;
+
+  state = stepMatch(state, roster, input({ overcharge: true }), EMPTY_INPUT);
+
+  for (let index = 0; index < 20; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  state = stepMatch(state, roster, input({ up: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  const velocityBeforeDoubleJump = state.fighters[0].vy;
+  state = stepMatch(state, roster, input({ up: true }), EMPTY_INPUT);
+
+  assert.ok(state.fighters[0].vy < velocityBeforeDoubleJump);
+  assert.equal(state.fighters[0].airJumpsRemaining, 0);
+});
+
+test("overcharge lets fighters air dash by spending the extra air option", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].overchargeMeter = MAX_OVERCHARGE_METER;
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 760;
+
+  state = stepMatch(state, roster, input({ overcharge: true }), EMPTY_INPUT);
+
+  for (let index = 0; index < 20; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  state = stepMatch(state, roster, input({ up: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, input({ left: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, input({ left: true }), EMPTY_INPUT);
+
+  assert.equal(state.fighters[0].action, "dash");
+  assert.equal(state.fighters[0].grounded, false);
+  assert.ok(state.fighters[0].dashFramesRemaining > 0);
+  assert.equal(state.fighters[0].airJumpsRemaining, 0);
+});
+
+test("double jump and air dash share the same overcharge air option", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].overchargeMeter = MAX_OVERCHARGE_METER;
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 760;
+
+  state = stepMatch(state, roster, input({ overcharge: true }), EMPTY_INPUT);
+
+  for (let index = 0; index < 20; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  state = stepMatch(state, roster, input({ up: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, input({ up: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, input({ left: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  const velocityBeforeDashAttempt = state.fighters[0].vy;
+  state = stepMatch(state, roster, input({ left: true }), EMPTY_INPUT);
+
+  assert.notEqual(state.fighters[0].action, "dash");
+  assert.equal(state.fighters[0].dashFramesRemaining, 0);
+  assert.equal(state.fighters[0].airJumpsRemaining, 0);
+  assert.ok(state.fighters[0].vy >= velocityBeforeDashAttempt);
 });
 
 test("fighters take damage when an attack overlaps hurtboxes", () => {
@@ -1126,6 +1285,29 @@ test("knockouts hold on round-over until a fresh button press advances", () => {
   assert.ok(state.events.some((entry) => entry.includes("wins round 1")));
 });
 
+test("overcharge meter persists between rounds", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].overchargeMeter = 63;
+  state.fighters[1].overchargeMeter = 100;
+  state.fighters[1].health = 0;
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  while (state.roundOverFramesRemaining > 0) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+
+  assert.equal(state.status, "countdown");
+  assert.equal(state.round, 2);
+  assert.equal(state.fighters[0].overchargeMeter, 63);
+  assert.equal(state.fighters[1].overchargeMeter, 100);
+});
+
 test("projectile punches spawn an arcing shot that can hit at range", () => {
   const roster = {
     [projectileFighter.id]: projectileFighter,
@@ -1218,7 +1400,10 @@ test("guarding a projectile applies default chip damage only", () => {
   }
 
   assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 3);
+  assert.equal(state.fighters[1].recoverableHealth, 3);
   assert.equal(state.fighters[1].hitstun, 0);
+  assert.ok(state.fighters[0].overchargeMeter > 0);
+  assert.ok(state.fighters[1].overchargeMeter > 0);
   assert.ok(state.events.some((entry) => entry.includes("blocked Bolt Shot")));
 });
 

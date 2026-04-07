@@ -14,6 +14,7 @@ export interface InputState {
   punch: boolean;
   kick: boolean;
   special: boolean;
+  overcharge: boolean;
 }
 
 export interface Box {
@@ -170,6 +171,7 @@ export interface FighterRuntimeState {
   action: FighterAction;
   actionFrames: number;
   health: number;
+  recoverableHealth: number;
   attackId: string | null;
   attackFrame: number;
   specialMovePhase: SpecialMovePhase | null;
@@ -184,7 +186,11 @@ export interface FighterRuntimeState {
   comboTimerFrames: number;
   wins: number;
   ready: boolean;
-  meter: number;
+  overchargeMeter: number;
+  overchargeActiveFrames: number;
+  overchargeActivationFrames: number;
+  recoverableRegenAccumulator: number;
+  airJumpsRemaining: number;
   moveCooldownFrames: Record<string, number>;
   lastInput: InputState;
 }

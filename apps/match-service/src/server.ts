@@ -40,7 +40,7 @@ function createEmptyConnection(): ConnectionState {
     playerName: "",
     fighterId: "morana",
     ready: false,
-    latestInput: { left: false, right: false, up: false, guard: false, punch: false, kick: false, special: false },
+    latestInput: { left: false, right: false, up: false, guard: false, punch: false, kick: false, special: false, overcharge: false },
   };
 }
 
