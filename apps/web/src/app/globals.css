@@ -218,6 +218,7 @@ body.fight-route-active .app-content {
   height: auto;
   image-rendering: pixelated;
   transform: translateX(-50%);
+  pointer-events: none;
   filter:
     drop-shadow(-4px -4px 0 rgba(11, 11, 24, 0.96))
     drop-shadow(4px -4px 0 rgba(11, 11, 24, 0.96))
@@ -244,9 +245,9 @@ body.fight-route-active .app-content {
   position: relative;
   z-index: 2;
   display: grid;
-  gap: clamp(8px, 1.4cqh, 14px);
+  gap: clamp(6px, 1.2cqh, 10px);
   align-self: end;
-  width: clamp(340px, 42cqw, 520px);
+  width: clamp(300px, 38cqw, 456px);
 }
 
 .arcade-menu-item {
@@ -411,12 +412,12 @@ body.fight-route-active .app-content {
 }
 
 .landing-menu-link {
-  min-height: clamp(52px, 13.4cqh, 76px);
+  min-height: clamp(44px, 11.2cqh, 62px);
   border-width: 4px;
   box-shadow:
     0 0 0 3px rgba(11, 11, 24, 0.92) inset,
     0 10px 22px rgba(0, 0, 0, 0.24);
-  font-size: clamp(1.7rem, 4.8cqw, 3rem);
+  font-size: clamp(1.4rem, 4cqw, 2.4rem);
   transform: translateX(-16cqw);
   opacity: 0;
   animation: landing-menu-slide 560ms cubic-bezier(0.18, 0.86, 0.28, 1) forwards;
