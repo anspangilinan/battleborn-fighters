@@ -283,7 +283,7 @@ async function discoverImageSource(
 }
 
 function getAudienceShellStyle(
-  audience: ReturnType<typeof getArena>['audience'],
+  audience: NonNullable<ReturnType<typeof getArena>['audience']>,
 ): CSSProperties {
   return {
     '--fight-audience-barrier-top': `${audience.barrierTopPercent}%`,
@@ -2797,15 +2797,23 @@ export function FightScene(props: FightSceneProps) {
     [selectedArena.backgroundOffsetY],
   );
   const audienceShellStyle = useMemo(
-    () => getAudienceShellStyle(selectedArena.audience),
+    () =>
+      selectedArena.audience
+        ? getAudienceShellStyle(selectedArena.audience)
+        : null,
     [selectedArena],
   );
   const audienceCrowd = useMemo(
-    () =>
-      createAudienceCrowd(selectedArena.audience, audienceSeed, [
+    () => {
+      if (!selectedArena.audience) {
+        return [];
+      }
+
+      return createAudienceCrowd(selectedArena.audience, audienceSeed, [
         fighterDefinition.id,
         opponentDefinition.id,
-      ]),
+      ]);
+    },
     [audienceSeed, fighterDefinition.id, opponentDefinition.id, selectedArena],
   );
   const audienceDefinitions = useMemo(
@@ -4142,42 +4150,44 @@ export function FightScene(props: FightSceneProps) {
         aria-label={`Fight match viewport. ${connectionState}`}
         aria-busy={isSceneBooting}
       >
-        <div
-          className="fight-audience-shell"
-          style={audienceShellStyle}
-          aria-hidden="true"
-        >
-          <div className="fight-audience-rail fight-audience-rail-back" />
-          {audienceCrowd.map((fan) => {
-            const definition = roster[fan.character.fighterId];
-            const manifest = fighterAssetManifests[fan.character.fighterId];
-            const frameSource = getAudienceFrameSource(
-              fan,
-              manifest,
-              audienceMatchFrame,
-            );
+        {audienceShellStyle ? (
+          <div
+            className="fight-audience-shell"
+            style={audienceShellStyle}
+            aria-hidden="true"
+          >
+            <div className="fight-audience-rail fight-audience-rail-back" />
+            {audienceCrowd.map((fan) => {
+              const definition = roster[fan.character.fighterId];
+              const manifest = fighterAssetManifests[fan.character.fighterId];
+              const frameSource = getAudienceFrameSource(
+                fan,
+                manifest,
+                audienceMatchFrame,
+              );
 
-            if (!definition || !frameSource) {
-              return null;
-            }
+              if (!definition || !frameSource) {
+                return null;
+              }
 
-            return (
-              <div
-                key={fan.key}
-                className={`fight-audience-fan fight-audience-cheer-${fan.character.cheerAnimation}`}
-                style={getAudienceFanStyle(fan, definition)}
-              >
-                <img
-                  src={frameSource}
-                  alt=""
-                  className="fight-audience-sprite"
-                />
-              </div>
-            );
-          })}
-          <div className="fight-audience-rail fight-audience-rail-front" />
-          <div className="fight-audience-haze" />
-        </div>
+              return (
+                <div
+                  key={fan.key}
+                  className={`fight-audience-fan fight-audience-cheer-${fan.character.cheerAnimation}`}
+                  style={getAudienceFanStyle(fan, definition)}
+                >
+                  <img
+                    src={frameSource}
+                    alt=""
+                    className="fight-audience-sprite"
+                  />
+                </div>
+              );
+            })}
+            <div className="fight-audience-rail fight-audience-rail-front" />
+            <div className="fight-audience-haze" />
+          </div>
+        ) : null}
         {isSceneBooting ? (
           <div className="fight-loading-overlay">
             <div className="fight-loading-faceoff">

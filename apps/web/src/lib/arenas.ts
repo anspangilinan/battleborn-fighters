@@ -47,53 +47,6 @@ const underwayAudience = {
   ],
 } satisfies ArenaAudienceDefinition;
 
-const fortSterlingAudience = {
-  leftInsetPercent: 16,
-  rightInsetPercent: 16,
-  barrierTopPercent: 40,
-  barrierHeightPercent: 12,
-  barrierOpacity: 0.42,
-  barrierTint: 'rgba(112, 118, 134, 0.88)',
-  highlightTint: 'rgba(255, 233, 174, 0.2)',
-  hazeOpacity: 0.22,
-  hazeTint: 'rgba(255, 216, 174, 0.26)',
-  rows: [
-    {
-      yPercent: 44,
-      count: 4,
-      minScale: 0.58,
-      maxScale: 0.66,
-      minBlurPx: 3.2,
-      maxBlurPx: 4.2,
-      opacity: 0.2,
-      spreadPercent: 6,
-      verticalJitterPercent: 1.1,
-    },
-    {
-      yPercent: 47.5,
-      count: 5,
-      minScale: 0.66,
-      maxScale: 0.74,
-      minBlurPx: 2.2,
-      maxBlurPx: 3.1,
-      opacity: 0.3,
-      spreadPercent: 8,
-      verticalJitterPercent: 1.4,
-    },
-    {
-      yPercent: 51,
-      count: 6,
-      minScale: 0.74,
-      maxScale: 0.82,
-      minBlurPx: 1.3,
-      maxBlurPx: 2.1,
-      opacity: 0.4,
-      spreadPercent: 10,
-      verticalJitterPercent: 1.6,
-    },
-  ],
-} satisfies ArenaAudienceDefinition;
-
 export const arenas = [
   {
     id: 'underway',
@@ -107,7 +60,7 @@ export const arenas = [
     label: 'Fort Sterling',
     backgroundPath: '/arenas/fort-sterling-bridge.gif',
     backgroundOffsetY: -36,
-    audience: fortSterlingAudience,
+    audience: null,
   },
 ] as const;
 
