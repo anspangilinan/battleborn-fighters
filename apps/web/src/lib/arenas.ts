@@ -62,7 +62,7 @@ export const arenas = [
     label: 'Fort Sterling',
     backgroundPath: '/arenas/fort-sterling-bridge.gif',
     backgroundOffsetY: 36,
-    combatOffsetY: 12,
+    combatOffsetY: 52,
     groundShadowOpacity: 0.34,
     audience: null,
   },
