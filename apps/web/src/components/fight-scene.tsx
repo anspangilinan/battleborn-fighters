@@ -71,6 +71,7 @@ type FightAnnouncement = {
   eyebrow: string;
   title: string;
   phase: FightAnnouncementPhase;
+  imageSrc: string | null;
 };
 type AiDirectionKey = 'left' | 'right';
 type FightBotDashJumpSequence = {
@@ -188,6 +189,18 @@ const KO_SLOWDOWN_DURATION_MS = 260;
 const KO_SLOWDOWN_TIME_SCALE = 1 / 3;
 const KO_ANNOUNCEMENT_DURATION_MS = 2000;
 const PARAK_WIN_COMPANION_FIGHTER_ID = 'paraktaktak';
+const fightAnnouncementAssetRoot = '/fight/announcements';
+const fightAnnouncementImageSources = {
+  draw: `${fightAnnouncementAssetRoot}/draw.png`,
+  fight: `${fightAnnouncementAssetRoot}/fight.png`,
+  ko: `${fightAnnouncementAssetRoot}/ko.png`,
+  round1: `${fightAnnouncementAssetRoot}/round-1.png`,
+  round2: `${fightAnnouncementAssetRoot}/round-2.png`,
+  round3: `${fightAnnouncementAssetRoot}/round-3.png`,
+  versus: `${fightAnnouncementAssetRoot}/versus.png`,
+  youLose: `${fightAnnouncementAssetRoot}/you-lose.png`,
+  youWin: `${fightAnnouncementAssetRoot}/you-win.png`,
+} as const;
 const PARAK_WIN_COMPANION_RENDER_HEIGHT = 55;
 const PARAK_WIN_COMPANION_WALK_FRAME_DURATION = 6;
 const PARAK_WIN_COMPANION_FINISH_FRAME_DURATION = 7;
@@ -2613,6 +2626,19 @@ function colorToNumber(hex: string) {
   return Number.parseInt(hex.replace('#', ''), 16);
 }
 
+function getRoundAnnouncementImageSrc(round: number) {
+  switch (round) {
+    case 1:
+      return fightAnnouncementImageSources.round1;
+    case 2:
+      return fightAnnouncementImageSources.round2;
+    case 3:
+      return fightAnnouncementImageSources.round3;
+    default:
+      return null;
+  }
+}
+
 function getCountdownAnnouncement(state: MatchState) {
   if (state.status !== 'countdown') {
     return null;
@@ -2620,16 +2646,18 @@ function getCountdownAnnouncement(state: MatchState) {
 
   if (state.countdownFrames > FPS) {
     return {
-      eyebrow: 'Next Bout',
+      eyebrow: '',
       title: `Round ${state.round}`,
       phase: 'round' as const,
+      imageSrc: getRoundAnnouncementImageSrc(state.round),
     };
   }
 
   return {
     eyebrow: '',
-    title: 'Fight!',
+    title: 'Fight',
     phase: 'fight' as const,
+    imageSrc: fightAnnouncementImageSources.fight,
   };
 }
 
@@ -2650,15 +2678,23 @@ function getRoundResultAnnouncement(
   }
 
   const winnerSlot = getRoundWinnerSlot(state);
+  const title =
+    winnerSlot == null
+      ? 'Draw'
+      : winnerSlot === playerSlot
+        ? 'You Win'
+        : 'You Lose';
+
   return {
     eyebrow: '',
-    title:
-      winnerSlot == null
-        ? 'Draw'
-        : winnerSlot === playerSlot
-          ? 'You Win'
-          : 'You Lose',
+    title,
     phase: 'result',
+    imageSrc:
+      winnerSlot == null
+        ? fightAnnouncementImageSources.draw
+        : winnerSlot === playerSlot
+          ? fightAnnouncementImageSources.youWin
+          : fightAnnouncementImageSources.youLose,
   };
 }
 
@@ -3241,8 +3277,9 @@ export function FightScene(props: FightSceneProps) {
 
       setKoAnnouncement({
         eyebrow: '',
-        title: 'K.O.',
+        title: 'KO',
         phase: 'ko',
+        imageSrc: fightAnnouncementImageSources.ko,
       });
       if (koAnnouncementTimeoutRef.current !== null) {
         window.clearTimeout(koAnnouncementTimeoutRef.current);
@@ -4303,6 +4340,16 @@ export function FightScene(props: FightSceneProps) {
                   {props.concealFighterOnLoading ? 'Random' : fighterDefinition.name}
                 </div>
               </div>
+              <div
+                className="fight-loading-versus-mark"
+                aria-hidden="true"
+              >
+                <img
+                  src={fightAnnouncementImageSources.versus}
+                  alt=""
+                  className="fight-loading-versus-mark-image"
+                />
+              </div>
               <div className="fight-loading-entry fight-loading-entry-opponent">
                 {props.concealOpponentOnLoading ? (
                   <div className="fight-loading-random-panel" aria-hidden="true">
@@ -4433,7 +4480,20 @@ export function FightScene(props: FightSceneProps) {
               </div>
             ) : null}
             <div className="fight-countdown-title">
-              {fightAnnouncement.title}
+              {fightAnnouncement.imageSrc ? (
+                <>
+                  <img
+                    src={fightAnnouncement.imageSrc}
+                    alt=""
+                    className="fight-countdown-title-image"
+                  />
+                  <span className="fight-announcement-accessible-text">
+                    {fightAnnouncement.title}
+                  </span>
+                </>
+              ) : (
+                fightAnnouncement.title
+              )}
             </div>
           </div>
         </div>
