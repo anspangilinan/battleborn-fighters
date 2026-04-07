@@ -9,10 +9,27 @@ import { isMenuBackKey } from "@/lib/menu-input";
 const fighters = Object.values(fighterRoster);
 const defaultSelectedFighterIds = fighters.map((entry) => entry.id);
 
-const stanceOptions = [
+const animationStances = [
+  "idle",
+  "walk",
+  "jump",
+  "block",
+  "dash",
+  "hurt",
+  "ko",
+  "win",
+  "attack1",
+  "attack2",
+  "special",
+  "special-pose",
+] as const;
+type AnimationStanceId = (typeof animationStances)[number];
+
+const previewOptions = [
   { id: "idle", label: "Idle" },
   { id: "walk", label: "Walk" },
   { id: "jump", label: "Jump" },
+  { id: "block", label: "Block" },
   { id: "dash", label: "Dash" },
   { id: "hurt", label: "Hurt" },
   { id: "ko", label: "KO" },
@@ -20,8 +37,10 @@ const stanceOptions = [
   { id: "attack1", label: "Attack 1" },
   { id: "attack2", label: "Attack 2" },
   { id: "special", label: "Special" },
+  { id: "special-pose", label: "Special Pose" },
+  { id: "special-sequence", label: "Special Seq" },
 ] as const;
-type StanceId = (typeof stanceOptions)[number]["id"];
+type PreviewId = (typeof previewOptions)[number]["id"];
 type FighterFrameState = Record<string, string[] | null>;
 
 const MAX_FRAME_SCAN = 24;
@@ -67,7 +86,55 @@ async function loadSequentialFrames(assetDirectory: string) {
   return [];
 }
 
-async function discoverFrameSources(fighterId: string, fighterName: string, stance: StanceId) {
+function isAnimationStanceId(value: PreviewId): value is AnimationStanceId {
+  return animationStances.includes(value as AnimationStanceId);
+}
+
+function buildProgressFrames(frameSources: string[], duration: number) {
+  if (duration <= 0 || frameSources.length === 0) {
+    return [];
+  }
+
+  if (frameSources.length === 1 || duration === 1) {
+    return Array.from({ length: duration }, () => frameSources[0]);
+  }
+
+  return Array.from({ length: duration }, (_, index) => {
+    const frameIndex = Math.floor(
+      (index * (frameSources.length - 1)) / Math.max(1, duration - 1),
+    );
+    return frameSources[frameIndex];
+  });
+}
+
+function buildLoopFrames(
+  frameSources: string[],
+  duration: number,
+  frameDuration: number,
+) {
+  if (duration <= 0 || frameSources.length === 0) {
+    return [];
+  }
+
+  return Array.from({ length: duration }, (_, index) => (
+    frameSources[Math.floor(index / Math.max(1, frameDuration)) % frameSources.length]
+  ));
+}
+
+function repeatLastFrame(frameSources: string[], duration: number) {
+  if (duration <= 0 || frameSources.length === 0) {
+    return [];
+  }
+
+  const lastFrameSource = frameSources[frameSources.length - 1];
+  return Array.from({ length: duration }, () => lastFrameSource);
+}
+
+async function discoverFrameSources(
+  fighterId: string,
+  fighterName: string,
+  stance: AnimationStanceId,
+) {
   const candidateRoots = Array.from(new Set([fighterId, toAssetSegment(fighterName)]));
   const candidateDirectories = candidateRoots.flatMap((root) => [
     `/characters/${root}/animations/${stance}/`,
@@ -82,6 +149,92 @@ async function discoverFrameSources(fighterId: string, fighterName: string, stan
   }
 
   return [];
+}
+
+function buildSpecialSequenceFrames(
+  fighter: (typeof fighters)[number],
+  specialSources: string[],
+  specialPoseSources: string[],
+) {
+  const move = fighter.moves.special;
+  if (!move || specialSources.length === 0) {
+    return [];
+  }
+
+  const specialSequence = move.specialSequence;
+  if (!specialSequence) {
+    return specialSources;
+  }
+
+  const totalFrames = Math.max(1, move.startup + move.active + move.recovery);
+  const buildUpDuration = Math.max(1, Math.min(specialSequence.buildUpFrames, totalFrames));
+  const pauseFrames = Math.max(0, specialSequence.pauseFrames ?? 0);
+  const zoomOutFrames = Math.max(0, specialSequence.zoomOutFrames ?? 0);
+  const usesDedicatedPose =
+    specialSequence.buildUpAnimation === "special-pose" &&
+    specialPoseSources.length > 0;
+  const buildUpSourcePool = usesDedicatedPose ? specialPoseSources : specialSources;
+  const buildUpSourceCount = usesDedicatedPose
+    ? buildUpSourcePool.length
+    : Math.min(
+        buildUpSourcePool.length,
+        Math.max(1, specialSequence.animationBuildUpFrames ?? buildUpDuration),
+      );
+  const buildUpSources = buildUpSourcePool.slice(0, Math.max(1, buildUpSourceCount));
+  const buildUpFrames = buildProgressFrames(buildUpSources, buildUpDuration);
+
+  if (specialSequence.animationMode === "loop") {
+    const loopDuration =
+      pauseFrames +
+      zoomOutFrames +
+      Math.max(1, totalFrames - buildUpDuration);
+    const loopFrames = buildLoopFrames(
+      specialSources,
+      loopDuration,
+      Math.max(1, specialSequence.loopFrameDuration ?? 4),
+    );
+    return [...buildUpFrames, ...loopFrames];
+  }
+
+  const followThroughSources = (
+    usesDedicatedPose
+      ? specialSources
+      : specialSources.slice(buildUpSources.length)
+  );
+  const resolvedFollowThroughSources = followThroughSources.length > 0
+    ? followThroughSources
+    : [specialSources[specialSources.length - 1]];
+  const followThroughDuration = Math.max(1, totalFrames - buildUpDuration);
+  const pauseHoldFrames = repeatLastFrame(buildUpSources, pauseFrames);
+  const zoomOutSequenceFrames = specialSequence.completeAnimationDuringZoomOut
+    ? buildProgressFrames(resolvedFollowThroughSources, zoomOutFrames)
+    : repeatLastFrame(buildUpSources, zoomOutFrames);
+  const followThroughFrames = specialSequence.completeAnimationDuringZoomOut
+    ? repeatLastFrame(resolvedFollowThroughSources, followThroughDuration)
+    : buildProgressFrames(resolvedFollowThroughSources, followThroughDuration);
+
+  return [
+    ...buildUpFrames,
+    ...pauseHoldFrames,
+    ...zoomOutSequenceFrames,
+    ...followThroughFrames,
+  ];
+}
+
+async function discoverPreviewFrameSources(
+  fighter: (typeof fighters)[number],
+  previewId: PreviewId,
+) {
+  if (isAnimationStanceId(previewId)) {
+    return discoverFrameSources(fighter.id, fighter.name, previewId);
+  }
+
+  const [specialSources, specialPoseSources] = await Promise.all([
+    discoverFrameSources(fighter.id, fighter.name, "special"),
+    discoverFrameSources(fighter.id, fighter.name, "special-pose"),
+  ]);
+
+  return buildSpecialSequenceFrames(fighter, specialSources, specialPoseSources);
 }
 
 function orderFighterIds(fighterIds: string[]) {
@@ -100,10 +253,11 @@ function getCurrentFrameSource(frameSources: string[], currentFrame: number) {
 export function AnimationLab() {
   const router = useRouter();
   const [selectedFighterIds, setSelectedFighterIds] = useState<string[]>(defaultSelectedFighterIds);
-  const [stance, setStance] = useState<StanceId>("walk");
+  const [previewId, setPreviewId] = useState<PreviewId>("walk");
   const [frameSourcesByFighter, setFrameSourcesByFighter] = useState<FighterFrameState>({});
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const selectedPreview = previewOptions.find((entry) => entry.id === previewId) ?? previewOptions[0];
 
   const selectedFighters = useMemo(
     () => fighters.filter((entry) => selectedFighterIds.includes(entry.id)),
@@ -134,7 +288,7 @@ export function AnimationLab() {
       const selectedEntries = fighters.filter((entry) => selectedFighterIds.includes(entry.id));
       const frameEntries = await Promise.all(
         selectedEntries.map(async (fighter) => {
-          const discoveredFrames = await discoverFrameSources(fighter.id, fighter.name, stance);
+          const discoveredFrames = await discoverPreviewFrameSources(fighter, previewId);
           return [fighter.id, discoveredFrames.length > 0 ? discoveredFrames : null] as const;
         }),
       );
@@ -152,7 +306,7 @@ export function AnimationLab() {
     return () => {
       cancelled = true;
     };
-  }, [selectedFighterIds, stance]);
+  }, [previewId, selectedFighterIds]);
 
   useEffect(() => {
     if (isLoading || maxFrameCount <= 1) {
@@ -247,13 +401,13 @@ export function AnimationLab() {
               <p className="panel-title">Animations</p>
             </div>
             <div className="animation-stance-grid" role="group" aria-label="Select animation">
-              {stanceOptions.map((entry) => (
+              {previewOptions.map((entry) => (
                 <button
                   key={entry.id}
                   type="button"
-                  className={`animation-stance-button${stance === entry.id ? " animation-stance-button-active" : ""}`}
-                  aria-pressed={stance === entry.id}
-                  onClick={() => setStance(entry.id)}
+                  className={`animation-stance-button${previewId === entry.id ? " animation-stance-button-active" : ""}`}
+                  aria-pressed={previewId === entry.id}
+                  onClick={() => setPreviewId(entry.id)}
                 >
                   {entry.label}
                 </button>
@@ -281,14 +435,14 @@ export function AnimationLab() {
                   <div
                     className="animation-gallery-stage"
                     style={{ minHeight: `${stageHeight}px` }}
-                    title={`${fighter.name} · ${stance}`}
+                    title={`${fighter.name} · ${selectedPreview.label}`}
                   >
                     {isFighterLoading ? (
-                      <div className="animation-loading" aria-label={`Loading ${fighter.name} ${stance}`}>
+                      <div className="animation-loading" aria-label={`Loading ${fighter.name} ${selectedPreview.label}`}>
                         <span className="animation-spinner" aria-hidden="true" />
                       </div>
                     ) : isAnimationMissing ? (
-                      <div className="animation-missing" aria-label={`${fighter.name} has no ${stance} animation`}>
+                      <div className="animation-missing" aria-label={`${fighter.name} has no ${selectedPreview.label} animation`}>
                         <span className="animation-missing-icon" aria-hidden="true">
                           <span className="animation-missing-icon-frame" />
                           <span className="animation-missing-icon-slash" />
@@ -297,7 +451,7 @@ export function AnimationLab() {
                     ) : (
                       <img
                         src={currentSource}
-                        alt={`${fighter.name} ${stance}`}
+                        alt={`${fighter.name} ${selectedPreview.label}`}
                         className="animation-sprite animation-sprite-render-height"
                         style={{ height: `${renderHeight}px` }}
                       />
