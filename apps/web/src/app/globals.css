@@ -721,7 +721,12 @@ body.fight-route-active .app-content {
   filter: grayscale(0.72) saturate(0.28) brightness(0.82);
 }
 
+.fight-screen-paused .fight-audience-shell {
+  filter: grayscale(0.6) saturate(0.42) brightness(0.78);
+}
+
 .fight-screen-paused .fight-canvas,
+.fight-screen-paused .fight-audience-shell,
 .fight-screen-paused .fight-hud-shell,
 .fight-screen-paused .fight-loading-overlay {
   transition: filter 140ms ease, opacity 140ms ease;
@@ -768,6 +773,149 @@ body.fight-route-active .app-content {
   transform: translate3d(0, var(--fight-arena-offset-y, 0px), 0);
 }
 
+.fight-audience-shell {
+  --fight-audience-barrier-top: 46%;
+  --fight-audience-barrier-height: 12%;
+  --fight-audience-barrier-opacity: 0.3;
+  --fight-audience-barrier-tint: rgba(17, 25, 35, 0.88);
+  --fight-audience-highlight-tint: rgba(255, 229, 166, 0.16);
+  --fight-audience-haze-opacity: 0.2;
+  --fight-audience-haze-tint: rgba(164, 205, 236, 0.24);
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.fight-audience-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7, 16, 26, 0.72) 0%, rgba(7, 16, 26, 0.2) 18%, rgba(7, 16, 26, 0) 34%),
+    linear-gradient(180deg, rgba(7, 16, 26, 0) 0%, rgba(7, 16, 26, 0) calc(var(--fight-audience-barrier-top) - 12%), rgba(7, 16, 26, 0.08) calc(var(--fight-audience-barrier-top) - 4%), rgba(7, 16, 26, 0.3) 100%);
+  opacity: 0.58;
+}
+
+.fight-audience-rail {
+  position: absolute;
+  left: -4%;
+  width: 108%;
+  pointer-events: none;
+}
+
+.fight-audience-rail-back {
+  top: calc(var(--fight-audience-barrier-top) - 1.4%);
+  z-index: 0;
+  height: 1.6%;
+  background: linear-gradient(90deg, transparent, var(--fight-audience-highlight-tint) 18%, var(--fight-audience-highlight-tint) 82%, transparent);
+  opacity: calc(0.22 + var(--fight-audience-barrier-opacity) * 0.42);
+  filter: blur(1px);
+}
+
+.fight-audience-rail-front {
+  top: var(--fight-audience-barrier-top);
+  z-index: 2;
+  height: var(--fight-audience-barrier-height);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 16%),
+    linear-gradient(180deg, rgba(5, 10, 16, 0.12), var(--fight-audience-barrier-tint) 40%, rgba(5, 10, 16, 0.92));
+  border-top: 1px solid var(--fight-audience-highlight-tint);
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 16px 24px rgba(0, 0, 0, 0.14);
+  opacity: var(--fight-audience-barrier-opacity);
+}
+
+.fight-audience-haze {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    radial-gradient(circle at 50% 28%, var(--fight-audience-haze-tint), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0) calc(var(--fight-audience-barrier-top) - 8%), var(--fight-audience-haze-tint) 100%);
+  mix-blend-mode: screen;
+  opacity: calc(var(--fight-audience-haze-opacity) + 0.08);
+}
+
+.fight-audience-fan {
+  --fight-audience-depth: 1;
+  --fight-audience-x: 50%;
+  --fight-audience-y: 58%;
+  --fight-audience-height: 18%;
+  --fight-audience-blur: 2px;
+  --fight-audience-opacity: 0.3;
+  --fight-audience-duration: 980ms;
+  --fight-audience-delay: 0ms;
+  --fight-audience-bob: 6px;
+  --fight-audience-sway: 2deg;
+  --fight-audience-lean: 0deg;
+  --fight-audience-flip: 1;
+  position: absolute;
+  left: var(--fight-audience-x);
+  top: var(--fight-audience-y);
+  z-index: var(--fight-audience-depth);
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: var(--fight-audience-height);
+  transform: translate(-50%, -100%);
+  transform-origin: 50% 100%;
+  isolation: isolate;
+  filter:
+    blur(var(--fight-audience-blur))
+    saturate(calc(0.26 + var(--fight-audience-opacity) * 1.05))
+    brightness(calc(0.52 + var(--fight-audience-opacity) * 0.5))
+    contrast(calc(0.7 + var(--fight-audience-opacity) * 0.28));
+}
+
+.fight-audience-sprite {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-height: none;
+  image-rendering: pixelated;
+  opacity: 1;
+  transform: scaleX(var(--fight-audience-flip));
+  transform-origin: 50% 100%;
+  filter:
+    grayscale(calc((1 - var(--fight-audience-opacity)) * 0.72))
+    sepia(calc((1 - var(--fight-audience-opacity)) * 0.18))
+    drop-shadow(0 10px 18px rgba(0, 0, 0, 0.26))
+    drop-shadow(0 0 8px rgba(255, 246, 214, 0.03));
+}
+
+.fight-audience-cheer-bounce {
+  animation: fight-audience-cheer-bounce var(--fight-audience-duration) var(--fight-audience-delay) infinite ease-in-out;
+}
+
+.fight-audience-cheer-wave {
+  animation: fight-audience-cheer-wave var(--fight-audience-duration) var(--fight-audience-delay) infinite ease-in-out;
+}
+
+.fight-audience-cheer-clap {
+  animation: fight-audience-cheer-clap var(--fight-audience-duration) var(--fight-audience-delay) infinite ease-in-out;
+}
+
+.fight-audience-cheer-lean {
+  animation: fight-audience-cheer-lean var(--fight-audience-duration) var(--fight-audience-delay) infinite ease-in-out;
+}
+
+.fight-audience-cheer-wave .fight-audience-sprite,
+.fight-audience-cheer-lean .fight-audience-sprite {
+  animation: fight-audience-sprite-sway var(--fight-audience-duration) var(--fight-audience-delay) infinite ease-in-out;
+}
+
+.fight-audience-cheer-clap .fight-audience-sprite {
+  animation: fight-audience-sprite-clap var(--fight-audience-duration) var(--fight-audience-delay) infinite ease-in-out;
+}
+
+.fight-screen-paused .fight-audience-fan,
+.fight-screen-paused .fight-audience-sprite {
+  animation-play-state: paused;
+}
+
 .fight-canvas:focus,
 .fight-canvas:focus-visible {
   outline: none;
@@ -784,7 +932,8 @@ body.fight-route-active .app-content {
 }
 
 .fight-screen-special .fight-canvas canvas,
-.fight-screen-special .fight-arena-backdrop-shell {
+.fight-screen-special .fight-arena-backdrop-shell,
+.fight-screen-special .fight-audience-shell {
   transform: translate(var(--fight-special-pan-x, 0%), var(--fight-special-pan-y, 0%)) scale(var(--fight-special-zoom-scale, 1.82));
   transform-origin: top left;
   filter:
@@ -796,6 +945,7 @@ body.fight-route-active .app-content {
 
 .fight-canvas canvas,
 .fight-arena-backdrop-shell,
+.fight-audience-shell,
 .fight-hud-shell,
 .fight-controls-shell,
 .fight-training-panel,
@@ -2579,6 +2729,131 @@ body.fight-route-active .app-content {
   100% {
     opacity: 0;
     transform: translateX(135%);
+  }
+}
+
+@keyframes fight-audience-cheer-bounce {
+  0%,
+  100% {
+    transform:
+      translate(-50%, -100%)
+      translateY(0)
+      rotate(calc(var(--fight-audience-sway) * -0.24));
+  }
+
+  40% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.56))
+      rotate(calc(var(--fight-audience-sway) * 0.24));
+  }
+
+  58% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -1))
+      rotate(var(--fight-audience-sway));
+  }
+}
+
+@keyframes fight-audience-cheer-wave {
+  0%,
+  100% {
+    transform:
+      translate(-50%, -100%)
+      translateY(0)
+      rotate(calc(var(--fight-audience-lean) * -0.42));
+  }
+
+  26% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.34))
+      rotate(var(--fight-audience-lean));
+  }
+
+  54% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.7))
+      rotate(calc(var(--fight-audience-lean) * -0.86));
+  }
+}
+
+@keyframes fight-audience-cheer-clap {
+  0%,
+  100% {
+    transform:
+      translate(-50%, -100%)
+      translateY(0)
+      rotate(calc(var(--fight-audience-sway) * -0.18))
+      scale(1);
+  }
+
+  44% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.42))
+      rotate(calc(var(--fight-audience-sway) * 0.14))
+      scale(1.02, 0.98);
+  }
+
+  56% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.76))
+      rotate(calc(var(--fight-audience-sway) * -0.08))
+      scale(0.985, 1.015);
+  }
+}
+
+@keyframes fight-audience-cheer-lean {
+  0%,
+  100% {
+    transform:
+      translate(-50%, -100%)
+      translateY(0)
+      rotate(calc(var(--fight-audience-lean) * -0.52));
+  }
+
+  36% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.3))
+      rotate(var(--fight-audience-lean));
+  }
+
+  72% {
+    transform:
+      translate(-50%, -100%)
+      translateY(calc(var(--fight-audience-bob) * -0.58))
+      rotate(calc(var(--fight-audience-lean) * -0.76));
+  }
+}
+
+@keyframes fight-audience-sprite-sway {
+  0%,
+  100% {
+    transform: scaleX(var(--fight-audience-flip)) rotate(0deg);
+  }
+
+  50% {
+    transform: scaleX(var(--fight-audience-flip)) rotate(calc(var(--fight-audience-sway) * 0.55));
+  }
+}
+
+@keyframes fight-audience-sprite-clap {
+  0%,
+  100% {
+    transform: scaleX(var(--fight-audience-flip)) scale(1);
+  }
+
+  46% {
+    transform: scaleX(var(--fight-audience-flip)) scale(1.02, 0.98);
+  }
+
+  56% {
+    transform: scaleX(var(--fight-audience-flip)) scale(0.985, 1.015);
   }
 }
 

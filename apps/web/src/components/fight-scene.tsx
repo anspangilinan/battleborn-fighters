@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 
 import { ArcadeMenuItem } from '@/components/arcade-menu-item';
 import { FightHud } from '@/components/fight-hud';
+import {
+  createAudienceCrowd,
+  type AudienceCharacterDefinition,
+  type AudienceFanPlacement,
+} from '@/lib/audience';
 import { getArena, pickRandomArenaId } from '@/lib/arenas';
 
 import { fighterRoster, getFighter } from '@battleborn/content';
@@ -264,6 +269,93 @@ async function discoverImageSource(
   }
 
   return null;
+}
+
+function getAudienceShellStyle(
+  audience: ReturnType<typeof getArena>['audience'],
+): CSSProperties {
+  return {
+    '--fight-audience-barrier-top': `${audience.barrierTopPercent}%`,
+    '--fight-audience-barrier-height': `${audience.barrierHeightPercent}%`,
+    '--fight-audience-barrier-opacity': `${audience.barrierOpacity}`,
+    '--fight-audience-barrier-tint': audience.barrierTint,
+    '--fight-audience-highlight-tint': audience.highlightTint,
+    '--fight-audience-haze-opacity': `${audience.hazeOpacity}`,
+    '--fight-audience-haze-tint': audience.hazeTint,
+  } as CSSProperties;
+}
+
+function getAudienceFrameSources(
+  character: AudienceCharacterDefinition,
+  manifest: FighterAssetManifest | undefined,
+) {
+  if (!manifest) {
+    return [];
+  }
+
+  const preferredStances = [
+    ...character.preferredStances,
+    'idle',
+    'walk',
+    'win',
+    'attack1',
+    'attack2',
+    'special',
+    'special-pose',
+  ] as const satisfies readonly FightAnimationStance[];
+
+  for (const stance of preferredStances) {
+    const frames = manifest.stanceSources[stance];
+    if (frames.length > 0) {
+      return frames;
+    }
+  }
+
+  return [];
+}
+
+function getAudienceFrameSource(
+  fan: AudienceFanPlacement,
+  manifest: FighterAssetManifest | undefined,
+  matchFrame: number,
+) {
+  const frames = getAudienceFrameSources(fan.character, manifest);
+  if (frames.length === 0) {
+    return null;
+  }
+
+  const frameDuration = Math.max(1, fan.character.frameDurationFrames);
+  const frameIndex =
+    Math.floor((matchFrame + fan.frameOffsetFrames) / frameDuration) %
+    frames.length;
+
+  return frames[frameIndex] ?? frames[0] ?? null;
+}
+
+function getAudienceFanStyle(
+  fan: AudienceFanPlacement,
+  definition: CharacterDefinition | undefined,
+): CSSProperties {
+  const renderHeight = definition?.sprites.renderHeight ?? defaultFighterRenderHeight;
+  const heightPercent = Math.min(
+    26,
+    Math.max(13, (renderHeight * fan.scale / DEFAULT_CONFIG.height) * 100),
+  );
+
+  return {
+    '--fight-audience-depth': `${fan.depth}`,
+    '--fight-audience-x': `${fan.xPercent}%`,
+    '--fight-audience-y': `${fan.yPercent}%`,
+    '--fight-audience-height': `${heightPercent}%`,
+    '--fight-audience-blur': `${fan.blurPx}px`,
+    '--fight-audience-opacity': `${fan.opacity}`,
+    '--fight-audience-duration': `${fan.durationMs}ms`,
+    '--fight-audience-delay': `-${fan.delayMs}ms`,
+    '--fight-audience-bob': `${fan.bobPx}px`,
+    '--fight-audience-sway': `${fan.swayDeg}deg`,
+    '--fight-audience-lean': `${fan.leanDeg}deg`,
+    '--fight-audience-flip': fan.flipX ? '-1' : '1',
+  } as CSSProperties;
 }
 
 function getProjectileSpriteName(sprite: string) {
@@ -2654,6 +2746,25 @@ export function FightScene(props: FightSceneProps) {
     () => getArena(props.arenaId),
     [props.arenaId],
   );
+  const audienceSeed = useMemo(
+    () =>
+      [
+        props.mode,
+        props.arenaId,
+        props.fighterId,
+        props.opponentId,
+        props.roomCode ?? '',
+        props.arcadeIndex ?? '',
+      ].join(':'),
+    [
+      props.mode,
+      props.arenaId,
+      props.fighterId,
+      props.opponentId,
+      props.roomCode,
+      props.arcadeIndex,
+    ],
+  );
   const hasArenaBackground = Boolean(selectedArena.backgroundPath);
   const arenaBackgroundStyle = useMemo<CSSProperties>(
     () => ({
@@ -2661,6 +2772,28 @@ export function FightScene(props: FightSceneProps) {
     }) as CSSProperties,
     [selectedArena.backgroundOffsetY],
   );
+  const audienceShellStyle = useMemo(
+    () => getAudienceShellStyle(selectedArena.audience),
+    [selectedArena],
+  );
+  const audienceCrowd = useMemo(
+    () =>
+      createAudienceCrowd(selectedArena.audience, audienceSeed, [
+        fighterDefinition.id,
+        opponentDefinition.id,
+      ]),
+    [audienceSeed, fighterDefinition.id, opponentDefinition.id, selectedArena],
+  );
+  const audienceDefinitions = useMemo(
+    () =>
+      getUniqueFighters(
+        audienceCrowd.flatMap((fan) =>
+          roster[fan.character.fighterId] ? [roster[fan.character.fighterId]] : [],
+        ),
+      ),
+    [audienceCrowd],
+  );
+  const audienceMatchFrame = hudState?.frame ?? 0;
   const controlledFighterRuntime = useMemo(
     () => hudState?.fighters.find((fighter) => fighter.slot === playerSlot) ?? null,
     [hudState, playerSlot],
@@ -3184,7 +3317,11 @@ export function FightScene(props: FightSceneProps) {
 
     void (async () => {
       await Promise.all([
-        ensureFighterAssets([fighterDefinition, opponentDefinition]),
+        ensureFighterAssets([
+          fighterDefinition,
+          opponentDefinition,
+          ...audienceDefinitions,
+        ]),
         ensureProjectileAssets([fighterDefinition, opponentDefinition]),
       ]);
 
@@ -3935,6 +4072,42 @@ export function FightScene(props: FightSceneProps) {
         aria-label={`Fight match viewport. ${connectionState}`}
         aria-busy={isSceneBooting}
       >
+        <div
+          className="fight-audience-shell"
+          style={audienceShellStyle}
+          aria-hidden="true"
+        >
+          <div className="fight-audience-rail fight-audience-rail-back" />
+          {audienceCrowd.map((fan) => {
+            const definition = roster[fan.character.fighterId];
+            const manifest = fighterAssetManifests[fan.character.fighterId];
+            const frameSource = getAudienceFrameSource(
+              fan,
+              manifest,
+              audienceMatchFrame,
+            );
+
+            if (!definition || !frameSource) {
+              return null;
+            }
+
+            return (
+              <div
+                key={fan.key}
+                className={`fight-audience-fan fight-audience-cheer-${fan.character.cheerAnimation}`}
+                style={getAudienceFanStyle(fan, definition)}
+              >
+                <img
+                  src={frameSource}
+                  alt=""
+                  className="fight-audience-sprite"
+                />
+              </div>
+            );
+          })}
+          <div className="fight-audience-rail fight-audience-rail-front" />
+          <div className="fight-audience-haze" />
+        </div>
         {isSceneBooting ? (
           <div className="fight-loading-overlay">
             <div className="fight-loading-faceoff">
