@@ -3,6 +3,11 @@ import { fighterRoster } from "@battleborn/content";
 import { FightCharacterSelect } from "@/components/fight-character-select";
 import { FightScene } from "@/components/fight-scene";
 import { defaultArenaId, isArenaId, pickRandomArenaId } from "@/lib/arenas";
+import {
+  isRandomFighterSelection,
+  isSelectableFighterSelection,
+  resolveFighterSelection,
+} from "@/lib/fighter-select";
 
 interface FightPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -69,12 +74,18 @@ export default async function FightPage({ searchParams }: FightPageProps) {
       ? "training"
       : params.mode === "arcade"
         ? "arcade"
-        : "local";
+      : "local";
   const defaultFighterId = fighterRoster.mcbalut ? "mcbalut" : Object.keys(fighterRoster)[0];
-  const explicitFighterId = typeof params.fighter === "string" && fighterRoster[params.fighter] ? params.fighter : null;
-  const explicitOpponentId = typeof params.opponent === "string" && fighterRoster[params.opponent] ? params.opponent : null;
+  const explicitFighterSelection =
+    typeof params.fighter === "string" && isSelectableFighterSelection(params.fighter)
+      ? params.fighter
+      : null;
+  const explicitOpponentSelection =
+    typeof params.opponent === "string" && isSelectableFighterSelection(params.opponent)
+      ? params.opponent
+      : null;
   const explicitArenaId = typeof params.arena === "string" && isArenaId(params.arena) ? params.arena : null;
-  const fighterId = explicitFighterId ?? defaultFighterId;
+  const fighterId = resolveFighterSelection(explicitFighterSelection, null, defaultFighterId);
   const arcadeOrder = mode === "arcade"
     ? parseArcadeOrder(params.arcadeOrder, fighterId)
     : [];
@@ -87,13 +98,17 @@ export default async function FightPage({ searchParams }: FightPageProps) {
   const fallbackOpponent = mode === "local"
     ? pickRandomOpponent(fighterId)
     : mode === "arcade"
-      ? arcadeOrder[arcadeIndex] ?? explicitOpponentId ?? pickRandomOpponent(fighterId)
+      ? arcadeOrder[arcadeIndex] ?? resolveFighterSelection(explicitOpponentSelection, fighterId) ?? pickRandomOpponent(fighterId)
     : fighterId === "digv" && fighterRoster.mcbalut
     ? "mcbalut"
     : fighterId === "mcbalut" && fighterRoster.digv
       ? "digv"
       : Object.keys(fighterRoster).find((id) => id !== fighterId) ?? fighterId;
-  const opponentId = explicitOpponentId ?? fallbackOpponent;
+  const opponentId = mode === "training"
+    ? resolveFighterSelection(explicitOpponentSelection, fighterId, fallbackOpponent)
+    : mode === "arcade"
+      ? fallbackOpponent
+      : resolveFighterSelection(explicitOpponentSelection, fighterId, fallbackOpponent);
   const arenaId = mode === "arcade"
     ? explicitArenaId ?? pickRandomArenaId()
     : explicitArenaId ?? defaultArenaId;
@@ -101,15 +116,15 @@ export default async function FightPage({ searchParams }: FightPageProps) {
   const token = typeof params.token === "string" ? params.token : undefined;
   const playerName = typeof params.name === "string" ? params.name : undefined;
   const shouldShowCharacterSelect =
-    (mode === "arcade" && !explicitFighterId) ||
-    (mode === "local" && (!explicitFighterId || !explicitArenaId)) ||
+    (mode === "arcade" && !explicitFighterSelection) ||
+    (mode === "local" && (!explicitFighterSelection || !explicitArenaId)) ||
     (mode === "training" &&
-      (!explicitFighterId || !explicitOpponentId || !explicitArenaId));
+      (!explicitFighterSelection || !explicitOpponentSelection || !explicitArenaId));
   const initialStep =
     mode !== "arcade" &&
     !explicitArenaId &&
-    ((mode === "local" && explicitFighterId) ||
-      (mode === "training" && explicitFighterId && explicitOpponentId))
+    ((mode === "local" && explicitFighterSelection) ||
+      (mode === "training" && explicitFighterSelection && explicitOpponentSelection))
       ? "stage"
       : "fighters";
 
@@ -118,8 +133,8 @@ export default async function FightPage({ searchParams }: FightPageProps) {
       <main className="fight-page fight-character-select-page">
         <FightCharacterSelect
           mode={mode}
-          initialFighterId={explicitFighterId ?? defaultFighterId}
-          initialOpponentId={explicitOpponentId ?? fallbackOpponent}
+          initialFighterId={explicitFighterSelection ?? defaultFighterId}
+          initialOpponentId={explicitOpponentSelection ?? fallbackOpponent}
           initialArenaId={arenaId}
           initialStep={initialStep}
         />
@@ -134,6 +149,10 @@ export default async function FightPage({ searchParams }: FightPageProps) {
         fighterId={fighterId}
         opponentId={opponentId}
         arenaId={arenaId}
+        concealFighterOnLoading={isRandomFighterSelection(explicitFighterSelection)}
+        concealOpponentOnLoading={
+          mode === "local" || isRandomFighterSelection(explicitOpponentSelection)
+        }
         arcadeOrder={mode === "arcade" ? arcadeOrder : undefined}
         arcadeIndex={mode === "arcade" ? arcadeIndex : undefined}
         roomCode={roomCode}

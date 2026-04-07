@@ -1598,6 +1598,7 @@ body.fight-route-active .app-content {
   display: grid;
   --fight-character-select-roster-width: clamp(56px, 10cqw, 96px);
   --fight-character-select-versus-width: clamp(24px, 5cqw, 52px);
+  --fight-hud-side-width: var(--fight-character-select-roster-width);
   grid-template-columns: var(--fight-character-select-roster-width) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   align-items: stretch;
@@ -1650,8 +1651,39 @@ body.fight-route-active .app-content {
   transform: none;
 }
 
+.fight-character-select-random-headshot {
+  width: var(--fight-hud-side-width);
+  height: var(--fight-hud-side-width);
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 240, 127, 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(13, 21, 38, 0.98), rgba(6, 10, 18, 0.98));
+}
+
+.fight-character-select-random-headshot-glyph {
+  position: relative;
+  z-index: 1;
+  color: #fff07f;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(2rem, 5cqw, 3.2rem);
+  line-height: 0.9;
+  text-shadow:
+    -2px -2px 0 rgba(8, 12, 20, 0.94),
+    2px -2px 0 rgba(8, 12, 20, 0.94),
+    -2px 2px 0 rgba(8, 12, 20, 0.94),
+    2px 2px 0 rgba(8, 12, 20, 0.94),
+    0 0 18px rgba(255, 240, 127, 0.2);
+}
+
 .fight-character-select-headshot-button-right .fight-character-select-headshot {
   transform: scaleX(-1);
+}
+
+.fight-character-select-headshot-button-right .fight-character-select-random-headshot {
+  transform: none;
 }
 
 .fight-character-select-headshot-button-active {
@@ -1733,6 +1765,10 @@ body.fight-route-active .app-content {
     2px -2px 0 rgba(8, 12, 20, 0.92),
     -2px 2px 0 rgba(8, 12, 20, 0.92),
     2px 2px 0 rgba(8, 12, 20, 0.92);
+}
+
+.fight-character-select-name-plain {
+  display: inline-block;
 }
 
 .fight-character-select-versus {
@@ -2419,6 +2455,22 @@ body.fight-route-active .app-content {
   padding: clamp(24px, 4cqw, 56px);
 }
 
+.fight-loading-entry {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  gap: clamp(14px, 2.2cqh, 24px);
+  width: 100%;
+}
+
+.fight-loading-entry-player {
+  justify-items: end;
+}
+
+.fight-loading-entry-opponent {
+  justify-items: start;
+}
+
 .fight-loading-portrait {
   width: min(38cqw, 520px);
   max-height: min(82cqh, 760px);
@@ -2436,12 +2488,52 @@ body.fight-route-active .app-content {
   transform: scaleX(-1);
 }
 
+.fight-loading-random-panel {
+  display: grid;
+  place-items: center;
+  width: min(38cqw, 520px);
+  min-height: min(56cqh, 420px);
+}
+
+.fight-loading-random-headshot {
+  display: grid;
+  place-items: center;
+  width: clamp(112px, 12cqw, 168px);
+  aspect-ratio: 1;
+  border: 3px solid rgba(244, 243, 232, 0.72);
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 240, 127, 0.2), transparent 38%),
+    linear-gradient(180deg, rgba(13, 21, 38, 0.98), rgba(6, 10, 18, 0.98));
+  box-shadow:
+    0 0 0 1px rgba(7, 16, 26, 0.48) inset,
+    0 18px 28px rgba(0, 0, 0, 0.35);
+}
+
+.fight-loading-random-glyph {
+  color: #fff07f;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(3.4rem, 7.4cqw, 5.8rem);
+  line-height: 0.9;
+  text-shadow:
+    -3px -3px 0 rgba(8, 12, 20, 0.94),
+    3px -3px 0 rgba(8, 12, 20, 0.94),
+    -3px 3px 0 rgba(8, 12, 20, 0.94),
+    3px 3px 0 rgba(8, 12, 20, 0.94),
+    0 0 22px rgba(255, 240, 127, 0.18);
+}
+
 .fight-loading-label {
   margin: 0;
   color: var(--text);
   font-size: clamp(1.05rem, 2cqw, 1.4rem);
-  text-transform: uppercase;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
   letter-spacing: 0.18em;
+  text-align: center;
+  text-shadow:
+    -2px -2px 0 rgba(8, 12, 20, 0.92),
+    2px -2px 0 rgba(8, 12, 20, 0.92),
+    -2px 2px 0 rgba(8, 12, 20, 0.92),
+    2px 2px 0 rgba(8, 12, 20, 0.92);
 }
 
 .status-line {

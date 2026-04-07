@@ -113,6 +113,8 @@ export interface FightSceneProps {
   fighterId: string;
   opponentId: string;
   arenaId: string;
+  concealFighterOnLoading?: boolean;
+  concealOpponentOnLoading?: boolean;
   arcadeOrder?: string[];
   arcadeIndex?: number;
   roomCode?: string;
@@ -4179,16 +4181,42 @@ export function FightScene(props: FightSceneProps) {
         {isSceneBooting ? (
           <div className="fight-loading-overlay">
             <div className="fight-loading-faceoff">
-              <img
-                src={fighterDefinition.sprites.portrait}
-                alt={fighterDefinition.name}
-                className="fight-loading-portrait fight-loading-portrait-player"
-              />
-              <img
-                src={opponentDefinition.sprites.portrait}
-                alt={opponentDefinition.name}
-                className="fight-loading-portrait fight-loading-portrait-opponent"
-              />
+              <div className="fight-loading-entry fight-loading-entry-player">
+                {props.concealFighterOnLoading ? (
+                  <div className="fight-loading-random-panel" aria-hidden="true">
+                    <div className="fight-loading-random-headshot">
+                      <span className="fight-loading-random-glyph">?</span>
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src={fighterDefinition.sprites.portrait}
+                    alt={fighterDefinition.name}
+                    className="fight-loading-portrait fight-loading-portrait-player"
+                  />
+                )}
+                <div className="fight-loading-label">
+                  {props.concealFighterOnLoading ? 'Random' : fighterDefinition.name}
+                </div>
+              </div>
+              <div className="fight-loading-entry fight-loading-entry-opponent">
+                {props.concealOpponentOnLoading ? (
+                  <div className="fight-loading-random-panel" aria-hidden="true">
+                    <div className="fight-loading-random-headshot">
+                      <span className="fight-loading-random-glyph">?</span>
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src={opponentDefinition.sprites.portrait}
+                    alt={opponentDefinition.name}
+                    className="fight-loading-portrait fight-loading-portrait-opponent"
+                  />
+                )}
+                <div className="fight-loading-label">
+                  {props.concealOpponentOnLoading ? 'Random' : opponentDefinition.name}
+                </div>
+              </div>
             </div>
           </div>
         ) : null}

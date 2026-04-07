@@ -17,6 +17,12 @@ import {
   type ArenaDefinition,
 } from "@/lib/arenas";
 import {
+  getFighterSelectionLabel,
+  isRandomFighterSelection,
+  isSelectableFighterSelection,
+  randomFighterSelectionId,
+} from "@/lib/fighter-select";
+import {
   getWrappedIndex,
   isMenuBackKey,
   isMenuConfirmKey,
@@ -27,8 +33,10 @@ import {
 } from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
+const fighterSelectOptionIds = [...fighters.map((fighter) => fighter.id), randomFighterSelectionId];
 const MAX_IDLE_FRAME_SCAN = 24;
 const IDLE_FRAME_MS = 120;
+const RANDOM_CYCLE_MS = 90;
 
 type FightCharacterSelectProps = {
   mode: "local" | "training" | "arcade";
@@ -41,8 +49,11 @@ type FightCharacterSelectProps = {
 type FightCharacterSelectStep = "fighters" | "stage";
 
 type CharacterPreviewProps = {
-  fighter: (typeof fighters)[number];
+  fighter?: (typeof fighters)[number];
   facing: "left" | "right";
+  label?: string;
+  plainLabel?: boolean;
+  portraitOnly?: boolean;
 };
 
 type StageOptionCardProps = {
@@ -202,15 +213,61 @@ function useIdleAnimation(fighter: (typeof fighters)[number] | undefined) {
   return idleFrames[currentFrame] ?? portraitSource;
 }
 
-function CharacterPreview({ fighter, facing }: CharacterPreviewProps) {
-  const currentIdleFrame = useIdleAnimation(fighter);
+function useRosterCycle(active: boolean, startingOffset = 0) {
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (fighters.length === 0) {
+      return 0;
+    }
+
+    const normalizedOffset = ((startingOffset % fighters.length) + fighters.length) % fighters.length;
+    return normalizedOffset;
+  });
+
+  useEffect(() => {
+    if (!active || fighters.length === 0) {
+      return;
+    }
+
+    setCurrentIndex(() => (Math.floor(Math.random() * fighters.length) + startingOffset) % fighters.length);
+
+    if (fighters.length === 1) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setCurrentIndex((previous) => (previous + 1) % fighters.length);
+    }, RANDOM_CYCLE_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [active, startingOffset]);
+
+  return fighters[currentIndex];
+}
+
+function CharacterPreview({
+  fighter,
+  facing,
+  label,
+  plainLabel = false,
+  portraitOnly = false,
+}: CharacterPreviewProps) {
+  const currentIdleFrame = useIdleAnimation(portraitOnly ? undefined : fighter);
+
+  if (!fighter) {
+    return null;
+  }
+
+  const currentSprite = portraitOnly ? fighter.sprites.portrait : currentIdleFrame;
+  const displayName = label ?? fighter.name;
 
   return (
     <div className="fight-character-select-preview-stack">
       <div className={`fight-character-select-stage fight-character-select-stage-${facing}`}>
-        {currentIdleFrame ? (
+        {currentSprite ? (
           <img
-            src={currentIdleFrame}
+            src={currentSprite}
             alt={fighter.name}
             className={`fight-character-select-preview-image fight-character-select-preview-image-${facing}`}
             style={{ height: `${(fighter.sprites.renderHeight ?? 168) * 4}px` }}
@@ -219,7 +276,13 @@ function CharacterPreview({ fighter, facing }: CharacterPreviewProps) {
           <div className="animation-spinner" aria-hidden="true" />
         )}
       </div>
-      <FightDisplayName className="fight-character-select-name" name={fighter.name} />
+      {plainLabel ? (
+        <span className="fight-character-select-name fight-character-select-name-plain">
+          {displayName}
+        </span>
+      ) : (
+        <FightDisplayName className="fight-character-select-name" name={displayName} />
+      )}
     </div>
   );
 }
@@ -257,11 +320,11 @@ function buildFightHref(
   if (mode === "training") {
     params.set("opponent", opponentId);
   } else if (mode === "arcade") {
-    if (arcadeOrder.length > 0) {
+    if (arcadeOrder.length > 0 && !isRandomFighterSelection(fighterId)) {
       params.set("arcadeOrder", arcadeOrder.join(","));
       params.set("arcadeIndex", "0");
       params.set("opponent", arcadeOrder[0] ?? fighterId);
-    } else {
+    } else if (!isRandomFighterSelection(fighterId)) {
       params.set("opponent", fighterId);
     }
   }
@@ -288,34 +351,43 @@ export function FightCharacterSelect({
   initialStep = "fighters",
 }: FightCharacterSelectProps) {
   const router = useRouter();
+  const defaultFighter = fighters[0];
+  const defaultOpponent = fighters[1] ?? fighters[0];
   const [step, setStep] = useState<FightCharacterSelectStep>(
     mode === "arcade" ? "fighters" : initialStep,
   );
   const [activeRoster, setActiveRoster] = useState<"fighter" | "opponent">("fighter");
   const [selectedFighterId, setSelectedFighterId] = useState(() =>
-    initialFighterId && fighterRoster[initialFighterId] ? initialFighterId : fighters[0]?.id ?? "",
+    isSelectableFighterSelection(initialFighterId)
+      ? initialFighterId
+      : defaultFighter?.id ?? "",
   );
   const [selectedOpponentId, setSelectedOpponentId] = useState(() =>
-    initialOpponentId && fighterRoster[initialOpponentId]
+    isSelectableFighterSelection(initialOpponentId)
       ? initialOpponentId
-      : fighters.find((fighter) => fighter.id !== initialFighterId)?.id ?? fighters[0]?.id ?? "",
+      : fighters.find((fighter) => fighter.id !== initialFighterId)?.id ??
+        defaultOpponent?.id ??
+        "",
   );
   const [selectedArenaId, setSelectedArenaId] = useState(() =>
     initialArenaId && isArenaId(initialArenaId) ? initialArenaId : defaultArenaId,
   );
   const [headshots, setHeadshots] = useState<Record<string, string | null>>({});
+  const [hoveredRandomRoster, setHoveredRandomRoster] = useState<
+    "fighter" | "opponent" | null
+  >(null);
 
   const selectedFighter = useMemo(
-    () => fighters.find((fighter) => fighter.id === selectedFighterId) ?? fighters[0],
+    () => fighters.find((fighter) => fighter.id === selectedFighterId) ?? null,
     [selectedFighterId],
   );
   const selectedOpponent = useMemo(
-    () => fighters.find((fighter) => fighter.id === selectedOpponentId) ?? fighters[1] ?? fighters[0],
+    () => fighters.find((fighter) => fighter.id === selectedOpponentId) ?? null,
     [selectedOpponentId],
   );
   const selectedArena = useMemo(() => getArena(selectedArenaId), [selectedArenaId]);
   const arcadeOrder = useMemo(
-    () => mode === "arcade"
+    () => mode === "arcade" && !isRandomFighterSelection(selectedFighterId)
       ? shuffleFighterIds(
           fighters
             .map((fighter) => fighter.id)
@@ -328,29 +400,40 @@ export function FightCharacterSelect({
     () => (mode === "arcade" ? pickRandomArenaId() : selectedArena.id),
     [mode, selectedArena.id, selectedFighterId],
   );
+  const showFighterRandomCycle =
+    hoveredRandomRoster === "fighter" || isRandomFighterSelection(selectedFighterId);
+  const showOpponentRandomCycle =
+    hoveredRandomRoster === "opponent" || isRandomFighterSelection(selectedOpponentId);
+  const fighterRandomPreview = useRosterCycle(showFighterRandomCycle);
+  const opponentRandomPreview = useRosterCycle(
+    showOpponentRandomCycle,
+    Math.max(1, Math.floor(fighters.length / 2)),
+  );
+  const previewFighter = showFighterRandomCycle ? fighterRandomPreview ?? defaultFighter : selectedFighter ?? defaultFighter;
+  const previewOpponent = showOpponentRandomCycle ? opponentRandomPreview ?? defaultOpponent : selectedOpponent ?? defaultOpponent;
   const ctaLabel = step === "fighters"
     ? mode === "arcade"
       ? "Start Arcade"
       : "Select Stage"
     : mode === "training"
       ? "Start Training"
-      : mode === "arcade"
+    : mode === "arcade"
         ? "Start Arcade"
       : "Start Fight";
-  const ctaHref = selectedFighter && selectedOpponent && (mode === "arcade" || step === "stage")
+  const ctaHref = mode === "arcade" || step === "stage"
     ? buildFightHref(
         mode,
-        selectedFighter.id,
-        selectedOpponent.id,
+        selectedFighterId,
+        selectedOpponentId,
         arcadeArenaId,
         arcadeOrder,
       )
     : undefined;
   const matchupLabel = mode === "training"
-    ? `${selectedFighter?.name ?? ""} vs ${selectedOpponent?.name ?? ""}`
+    ? `${getFighterSelectionLabel(selectedFighterId)} vs ${getFighterSelectionLabel(selectedOpponentId)}`
     : mode === "arcade"
-      ? `${selectedFighter?.name ?? ""} vs Arcade`
-    : `${selectedFighter?.name ?? ""} vs Random`;
+      ? `${getFighterSelectionLabel(selectedFighterId)} vs Arcade`
+      : `${getFighterSelectionLabel(selectedFighterId)} vs Random`;
   const matchupHint = mode === "training"
     ? "Matchup locked. Pick the arena."
     : mode === "arcade"
@@ -414,9 +497,13 @@ export function FightCharacterSelect({
         if (isMenuUpKey(event) || (mode !== "training" && isMenuLeftKey(event))) {
           event.preventDefault();
           const currentId = activeRoster === "opponent" ? selectedOpponentId : selectedFighterId;
-          const currentIndex = fighters.findIndex((fighter) => fighter.id === currentId);
-          const nextIndex = getWrappedIndex(currentIndex, -1, fighters.length);
-          const nextId = fighters[nextIndex]?.id;
+          const currentIndex = fighterSelectOptionIds.indexOf(currentId);
+          const nextIndex = getWrappedIndex(
+            currentIndex >= 0 ? currentIndex : 0,
+            -1,
+            fighterSelectOptionIds.length,
+          );
+          const nextId = fighterSelectOptionIds[nextIndex];
           if (!nextId) {
             return;
           }
@@ -432,9 +519,13 @@ export function FightCharacterSelect({
         if (isMenuDownKey(event) || (mode !== "training" && isMenuRightKey(event))) {
           event.preventDefault();
           const currentId = activeRoster === "opponent" ? selectedOpponentId : selectedFighterId;
-          const currentIndex = fighters.findIndex((fighter) => fighter.id === currentId);
-          const nextIndex = getWrappedIndex(currentIndex, 1, fighters.length);
-          const nextId = fighters[nextIndex]?.id;
+          const currentIndex = fighterSelectOptionIds.indexOf(currentId);
+          const nextIndex = getWrappedIndex(
+            currentIndex >= 0 ? currentIndex : 0,
+            1,
+            fighterSelectOptionIds.length,
+          );
+          const nextId = fighterSelectOptionIds[nextIndex];
           if (!nextId) {
             return;
           }
@@ -503,7 +594,7 @@ export function FightCharacterSelect({
     step,
   ]);
 
-  if (!selectedFighter || !selectedOpponent) {
+  if (!defaultFighter || !defaultOpponent) {
     return null;
   }
 
@@ -551,7 +642,7 @@ export function FightCharacterSelect({
           <button
             key={fighter.id}
             type="button"
-            className={`fight-character-select-headshot-button${fighter.id === selectedFighter.id ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "fighter" && fighter.id === selectedFighter.id ? " fight-character-select-headshot-button-cursor" : ""}`}
+            className={`fight-character-select-headshot-button${fighter.id === selectedFighterId ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "fighter" && fighter.id === selectedFighterId ? " fight-character-select-headshot-button-cursor" : ""}`}
             onClick={() => {
               setActiveRoster("fighter");
               setSelectedFighterId(fighter.id);
@@ -564,17 +655,44 @@ export function FightCharacterSelect({
             )}
           </button>
         ))}
+        <button
+          type="button"
+          className={`fight-character-select-headshot-button${isRandomFighterSelection(selectedFighterId) ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "fighter" && isRandomFighterSelection(selectedFighterId) ? " fight-character-select-headshot-button-cursor" : ""}`}
+          onMouseEnter={() => setHoveredRandomRoster("fighter")}
+          onMouseLeave={() => setHoveredRandomRoster((current) => current === "fighter" ? null : current)}
+          onClick={() => {
+            setActiveRoster("fighter");
+            setSelectedFighterId(randomFighterSelectionId);
+          }}
+          aria-label="Random fighter"
+        >
+          <div className="fight-hud-headshot fight-character-select-headshot fight-character-select-random-headshot">
+            <span className="fight-character-select-random-headshot-glyph">?</span>
+          </div>
+        </button>
       </div>
 
       <div className="fight-character-select-preview fight-character-select-preview-left">
-        <CharacterPreview fighter={selectedFighter} facing="right" />
+        <CharacterPreview
+          fighter={previewFighter ?? undefined}
+          facing="right"
+          label={showFighterRandomCycle ? "Random" : undefined}
+          plainLabel={showFighterRandomCycle}
+          portraitOnly={showFighterRandomCycle}
+        />
       </div>
 
       {mode === "training" ? (
         <>
           <div className="fight-character-select-versus">VS</div>
           <div className="fight-character-select-preview fight-character-select-preview-right">
-            <CharacterPreview fighter={selectedOpponent} facing="left" />
+            <CharacterPreview
+              fighter={previewOpponent ?? undefined}
+              facing="left"
+              label={showOpponentRandomCycle ? "Random" : undefined}
+              plainLabel={showOpponentRandomCycle}
+              portraitOnly={showOpponentRandomCycle}
+            />
           </div>
           <div
             className={`fight-character-select-roster fight-character-select-roster-right${activeRoster === "opponent" ? " fight-character-select-roster-active" : ""}`}
@@ -585,7 +703,7 @@ export function FightCharacterSelect({
               <button
                 key={`${fighter.id}-opponent`}
                 type="button"
-                className={`fight-character-select-headshot-button fight-character-select-headshot-button-right${fighter.id === selectedOpponent.id ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "opponent" && fighter.id === selectedOpponent.id ? " fight-character-select-headshot-button-cursor" : ""}`}
+                className={`fight-character-select-headshot-button fight-character-select-headshot-button-right${fighter.id === selectedOpponentId ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "opponent" && fighter.id === selectedOpponentId ? " fight-character-select-headshot-button-cursor" : ""}`}
                 onClick={() => {
                   setActiveRoster("opponent");
                   setSelectedOpponentId(fighter.id);
@@ -598,6 +716,21 @@ export function FightCharacterSelect({
                 )}
               </button>
             ))}
+            <button
+              type="button"
+              className={`fight-character-select-headshot-button fight-character-select-headshot-button-right${isRandomFighterSelection(selectedOpponentId) ? " fight-character-select-headshot-button-active" : ""}${activeRoster === "opponent" && isRandomFighterSelection(selectedOpponentId) ? " fight-character-select-headshot-button-cursor" : ""}`}
+              onMouseEnter={() => setHoveredRandomRoster("opponent")}
+              onMouseLeave={() => setHoveredRandomRoster((current) => current === "opponent" ? null : current)}
+              onClick={() => {
+                setActiveRoster("opponent");
+                setSelectedOpponentId(randomFighterSelectionId);
+              }}
+              aria-label="Random opponent"
+            >
+              <div className="fight-hud-headshot fight-character-select-headshot fight-character-select-random-headshot">
+                <span className="fight-character-select-random-headshot-glyph">?</span>
+              </div>
+            </button>
           </div>
         </>
       ) : null}
