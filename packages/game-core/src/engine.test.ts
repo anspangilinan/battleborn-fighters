@@ -527,6 +527,41 @@ test("overcharge boosts movement, boosts damage, and regenerates recoverable hea
   assert.ok(regenState.fighters[0].overchargeActiveFrames < OVERCHARGE_DURATION_FRAMES);
 });
 
+test("overcharge activation causes nonlethal pushback to the opponent", () => {
+  const roster = { [fighter.id]: fighter };
+  let state = createMatchState(roster, fighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].overchargeMeter = MAX_OVERCHARGE_METER;
+  state.fighters[0].x = 360;
+  state.fighters[1].x = 418;
+  state.fighters[1].health = 2;
+
+  state = stepMatch(state, roster, input({ overcharge: true }), EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].health, 1);
+  assert.equal(state.fighters[1].action, "hit");
+  assert.ok(state.fighters[1].x > 418);
+
+  let nonlethalState = createMatchState(roster, fighter.id, fighter.id);
+  nonlethalState.countdownFrames = 0;
+  nonlethalState.status = "fighting";
+  nonlethalState.fighters[0].overchargeMeter = MAX_OVERCHARGE_METER;
+  nonlethalState.fighters[0].x = 360;
+  nonlethalState.fighters[1].x = 418;
+  nonlethalState.fighters[1].health = 1;
+
+  nonlethalState = stepMatch(
+    nonlethalState,
+    roster,
+    input({ overcharge: true }),
+    EMPTY_INPUT,
+  );
+
+  assert.equal(nonlethalState.fighters[1].health, 1);
+  assert.ok(nonlethalState.fighters[1].x > 418);
+});
+
 test("overcharge grants a single extra air jump", () => {
   const roster = { [fighter.id]: fighter };
   let state = createMatchState(roster, fighter.id, fighter.id);

@@ -44,6 +44,15 @@ const TRAINING_CONFIG = {
 const TRAINING_HEALTH_RECOVERY_PER_FRAME = 48;
 const TRAINING_OVERCHARGE_RECOVERY_PER_FRAME = 5;
 
+type OverchargeActivationFlash = {
+  key: string;
+  xPercent: number;
+  yPercent: number;
+  intensity: number;
+  coreSizePercent: number;
+  haloSizePercent: number;
+  blurPx: number;
+};
 type FightMode = 'local' | 'training' | 'online' | 'arcade';
 type TrainingOpponentMode = 'idle' | 'bot';
 type ControlInputKey = keyof Pick<
@@ -355,6 +364,19 @@ function getAudienceFanStyle(
     '--fight-audience-sway': `${fan.swayDeg}deg`,
     '--fight-audience-lean': `${fan.leanDeg}deg`,
     '--fight-audience-flip': fan.flipX ? '-1' : '1',
+  } as CSSProperties;
+}
+
+function getOverchargeActivationFlashStyle(
+  flash: OverchargeActivationFlash,
+): CSSProperties {
+  return {
+    '--fight-overcharge-flash-x': `${flash.xPercent}%`,
+    '--fight-overcharge-flash-y': `${flash.yPercent}%`,
+    '--fight-overcharge-flash-intensity': `${flash.intensity}`,
+    '--fight-overcharge-flash-core-size': `${flash.coreSizePercent}%`,
+    '--fight-overcharge-flash-halo-size': `${flash.haloSizePercent}%`,
+    '--fight-overcharge-flash-blur': `${flash.blurPx}px`,
   } as CSSProperties;
 }
 
@@ -2910,6 +2932,52 @@ export function FightScene(props: FightSceneProps) {
     };
   }, [fighterAssetManifests, hudState]);
 
+  const overchargeActivationFlashes = useMemo(() => {
+    if (!hudState) {
+      return [] as OverchargeActivationFlash[];
+    }
+
+    return hudState.fighters.flatMap((fighter) => {
+      if (fighter.overchargeActivationFrames <= 0) {
+        return [];
+      }
+
+      const definition = roster[fighter.fighterId];
+      if (!definition) {
+        return [];
+      }
+
+      const renderHeight =
+        definition.sprites.renderHeight ?? defaultFighterRenderHeight;
+      const visualLift =
+        getDashVisualLift(fighter, definition) +
+        getSpecialHoverVisualLift(fighter, definition);
+      const flashProgress = 1 - getOverchargeActivationProgress(fighter);
+      const intensity = Math.pow(Math.max(0, flashProgress), 2.2);
+
+      return [
+        {
+          key: `${fighter.slot}-${hudState.frame}`,
+          xPercent: (fighter.x / DEFAULT_CONFIG.width) * 100,
+          yPercent:
+            ((fighter.y + 6 - visualLift - renderHeight * 0.56) /
+              DEFAULT_CONFIG.height) *
+            100,
+          intensity,
+          coreSizePercent: Math.max(
+            7,
+            (renderHeight * 0.38 / DEFAULT_CONFIG.width) * 100,
+          ),
+          haloSizePercent: Math.max(
+            18,
+            (renderHeight * 1.5 / DEFAULT_CONFIG.width) * 100,
+          ),
+          blurPx: Math.round(8 + intensity * 16),
+        },
+      ] satisfies OverchargeActivationFlash[];
+    });
+  }, [hudState]);
+
   const specialCinematicStyle = activeSpecialCinematic
     ? ({
         '--fight-special-zoom-scale': `${activeSpecialCinematic.zoomScale}`,
@@ -4137,6 +4205,20 @@ export function FightScene(props: FightSceneProps) {
                 className={`fight-special-focus${activeSpecialCinematic.fighter.facing < 0 ? ' fight-special-focus-flipped' : ''}`}
               />
             ) : null}
+          </div>
+        ) : null}
+        {!isSceneBooting && overchargeActivationFlashes.length > 0 ? (
+          <div
+            className="fight-overcharge-flash-overlay"
+            aria-hidden="true"
+          >
+            {overchargeActivationFlashes.map((flash) => (
+              <div
+                key={flash.key}
+                className="fight-overcharge-flash"
+                style={getOverchargeActivationFlashStyle(flash)}
+              />
+            ))}
           </div>
         ) : null}
         {!isSceneBooting && hudState ? (

@@ -35,6 +35,9 @@ const OVERCHARGE_BLOCK_DONE_METER_MULTIPLIER = 0.04;
 const OVERCHARGE_BLOCK_TAKEN_METER_BASE = 2;
 const OVERCHARGE_BLOCK_TAKEN_METER_MULTIPLIER = 0.05;
 const OVERCHARGE_REGEN_PER_SECOND_RATIO = 0.02;
+const OVERCHARGE_ACTIVATION_DAMAGE = 1;
+const OVERCHARGE_ACTIVATION_HITSTUN_FRAMES = 6;
+const OVERCHARGE_ACTIVATION_PUSHBACK_X = 12;
 
 export const MAX_OVERCHARGE_METER = 100;
 export const OVERCHARGE_DURATION_FRAMES = FPS * 12;
@@ -609,6 +612,8 @@ function canActivateOvercharge(
 function activateOvercharge(
   state: MatchState,
   fighter: FighterRuntimeState,
+  opponent: FighterRuntimeState,
+  opponentDefinition: CharacterDefinition,
 ) {
   interruptAttack(fighter);
   cancelDash(fighter);
@@ -622,6 +627,37 @@ function activateOvercharge(
   fighter.recoverableRegenAccumulator = 0;
   if (!fighter.grounded) {
     fighter.airJumpsRemaining = Math.max(fighter.airJumpsRemaining, 1);
+  }
+
+  if (opponent.health > 0) {
+    const activationDamage = Math.min(
+      OVERCHARGE_ACTIVATION_DAMAGE,
+      Math.max(0, opponent.health - 1),
+    );
+
+    if (activationDamage > 0) {
+      opponent.health -= activationDamage;
+      addRecoverableHealth(
+        opponent,
+        opponentDefinition,
+        getRecoverableDamage(activationDamage, false),
+      );
+    }
+
+    interruptAttack(opponent);
+    cancelDash(opponent);
+    clearComboState(opponent);
+    opponent.hitstun = Math.max(
+      opponent.hitstun,
+      OVERCHARGE_ACTIVATION_HITSTUN_FRAMES,
+    );
+    opponent.vx = OVERCHARGE_ACTIVATION_PUSHBACK_X * fighter.facing;
+    if (opponent.grounded) {
+      opponent.vy = 0;
+      opponent.juggleState = null;
+      opponent.action = "hit";
+    }
+    opponent.invulnerableFrames = 0;
   }
 
   state.events.push(`${fighter.name} activated Overcharge`);
@@ -642,7 +678,7 @@ function updateFighter(
   tickMoveCooldowns(fighter, definition);
   tickComboState(fighter);
   if (canActivateOvercharge(fighter, input) && state.status === "fighting" && !frozenBySpecialCinematic) {
-    activateOvercharge(state, fighter);
+    activateOvercharge(state, fighter, opponent, opponentDefinition);
   }
 
   if (frozenBySpecialCinematic) {

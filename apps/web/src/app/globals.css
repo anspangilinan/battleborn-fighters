@@ -998,6 +998,42 @@ body.fight-route-active .app-content {
   transition: opacity 120ms linear;
 }
 
+.fight-overcharge-flash-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+  mix-blend-mode: screen;
+}
+
+.fight-overcharge-flash {
+  --fight-overcharge-flash-x: 50%;
+  --fight-overcharge-flash-y: 50%;
+  --fight-overcharge-flash-intensity: 0;
+  --fight-overcharge-flash-core-size: 10%;
+  --fight-overcharge-flash-halo-size: 24%;
+  --fight-overcharge-flash-blur: 12px;
+  position: absolute;
+  inset: -18%;
+  opacity: var(--fight-overcharge-flash-intensity);
+  background:
+    radial-gradient(
+      circle at var(--fight-overcharge-flash-x) var(--fight-overcharge-flash-y),
+      rgba(255, 255, 255, calc(0.96 * var(--fight-overcharge-flash-intensity))) 0,
+      rgba(255, 255, 255, calc(0.82 * var(--fight-overcharge-flash-intensity))) calc(var(--fight-overcharge-flash-core-size) * 0.18),
+      rgba(255, 246, 188, calc(0.66 * var(--fight-overcharge-flash-intensity))) calc(var(--fight-overcharge-flash-core-size) * 0.52),
+      rgba(116, 233, 255, calc(0.3 * var(--fight-overcharge-flash-intensity))) calc(var(--fight-overcharge-flash-halo-size) * 0.72),
+      transparent var(--fight-overcharge-flash-halo-size)
+    ),
+    radial-gradient(
+      circle at var(--fight-overcharge-flash-x) var(--fight-overcharge-flash-y),
+      rgba(255, 255, 255, calc(0.16 * var(--fight-overcharge-flash-intensity))) 0,
+      transparent calc(var(--fight-overcharge-flash-halo-size) * 1.28)
+    );
+  filter: blur(var(--fight-overcharge-flash-blur));
+}
+
 .fight-special-backlight {
   position: absolute;
   inset: 0;
