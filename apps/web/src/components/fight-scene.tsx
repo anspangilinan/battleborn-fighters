@@ -495,7 +495,10 @@ function formatCooldownLabel(remainingFrames: number) {
 
 function getProjectileAssetSourceCandidates(sprite: string) {
   const normalizedSprite = sprite.trim().replace(/^\/+/, '');
-  const basePath = normalizedSprite.startsWith('projectiles/')
+  const usesDirectAssetPath =
+    normalizedSprite.startsWith('projectiles/') ||
+    normalizedSprite.startsWith('characters/');
+  const basePath = usesDirectAssetPath
     ? `/${normalizedSprite}`
     : `/projectiles/${normalizedSprite}`;
 
