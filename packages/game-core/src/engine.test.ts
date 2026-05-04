@@ -201,6 +201,23 @@ const highTierProjectileFighter: CharacterDefinition = {
   },
 };
 
+const unblockableProjectileFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "unblockable-projectile-fighter",
+  name: "Unblockable Projectile Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      label: "Guard Break Bolt",
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        guardBypass: true,
+      },
+    },
+  },
+};
+
 const fastProjectileFighter: CharacterDefinition = {
   ...projectileFighter,
   id: "fast-projectile-fighter",
@@ -1440,6 +1457,33 @@ test("guarding a projectile applies default chip damage only", () => {
   assert.ok(state.fighters[0].overchargeMeter > 0);
   assert.ok(state.fighters[1].overchargeMeter > 0);
   assert.ok(state.events.some((entry) => entry.includes("blocked Bolt Shot")));
+});
+
+test("guard bypass projectiles still land through guard", () => {
+  const roster = {
+    [unblockableProjectileFighter.id]: unblockableProjectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, unblockableProjectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 180;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ punch: true }),
+    input({ right: true }),
+  );
+
+  for (let index = 0; index < 60 && state.fighters[1].health === fighter.stats.maxHealth; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, input({ right: true }));
+  }
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 55);
+  assert.ok(state.events.some((entry) => entry.includes("landed Guard Break Bolt")));
+  assert.ok(!state.events.some((entry) => entry.includes("blocked Guard Break Bolt")));
 });
 
 test("projectile apex height stays stable when speed changes", () => {

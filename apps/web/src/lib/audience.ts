@@ -196,11 +196,25 @@ export function createAudienceCrowd(
   const availableCharacters = audienceCharacterTable.filter(
     (character) => !excludedFighterIdSet.has(character.fighterId),
   );
+  const availableCharactersByFighterId = new Map<
+    string,
+    AudienceCharacterDefinition[]
+  >();
 
   if (availableCharacters.length === 0) {
     return placements;
   }
 
+  availableCharacters.forEach((character) => {
+    const fighterCharacters =
+      availableCharactersByFighterId.get(character.fighterId) ?? [];
+    fighterCharacters.push(character);
+    availableCharactersByFighterId.set(character.fighterId, fighterCharacters);
+  });
+
+  const remainingUniqueFighterIds = Array.from(
+    availableCharactersByFighterId.keys(),
+  );
   let remainingFans = MAX_AUDIENCE_FANS;
 
   audience.rows.forEach((row, rowIndex) => {
@@ -231,7 +245,24 @@ export function createAudienceCrowd(
       const yPercent =
         row.yPercent +
         randomRange(random, -row.verticalJitterPercent, row.verticalJitterPercent);
-      const character =
+      let character: AudienceCharacterDefinition | undefined;
+
+      // Keep each background fighter unique within a crowd before reusing one.
+      if (remainingUniqueFighterIds.length > 0) {
+        const fighterIndex = Math.floor(random() * remainingUniqueFighterIds.length);
+        const [fighterId] = remainingUniqueFighterIds.splice(fighterIndex, 1);
+        const fighterCharacters =
+          fighterId !== undefined
+            ? availableCharactersByFighterId.get(fighterId)
+            : undefined;
+
+        character =
+          fighterCharacters?.[
+            Math.floor(random() * fighterCharacters.length)
+          ] ?? fighterCharacters?.[0];
+      }
+
+      character ??=
         availableCharacters[
           Math.floor(random() * availableCharacters.length)
         ] ?? availableCharacters[0];

@@ -1,6 +1,7 @@
 import { fighterRoster } from "@battleborn/content";
 
 export const randomFighterSelectionId = "__random__";
+type FighterSelectionRoster = Record<string, { name: string }>;
 
 export function isRandomFighterSelection(value: string | null | undefined) {
   return value === randomFighterSelectionId;
@@ -8,16 +9,20 @@ export function isRandomFighterSelection(value: string | null | undefined) {
 
 export function isSelectableFighterSelection(
   value: string | null | undefined,
+  roster: FighterSelectionRoster = fighterRoster,
 ): value is string {
   if (!value) {
     return false;
   }
 
-  return isRandomFighterSelection(value) || Boolean(fighterRoster[value]);
+  return isRandomFighterSelection(value) || Boolean(roster[value]);
 }
 
-export function pickRandomFighterId(excludingId?: string | null) {
-  const fighterIds = Object.keys(fighterRoster);
+export function pickRandomFighterId(
+  excludingId?: string | null,
+  roster: FighterSelectionRoster = fighterRoster,
+) {
+  const fighterIds = Object.keys(roster);
   const eligibleIds = fighterIds.filter((fighterId) => fighterId !== excludingId);
   const pool = eligibleIds.length > 0 ? eligibleIds : fighterIds;
 
@@ -28,30 +33,34 @@ export function pickRandomFighterId(excludingId?: string | null) {
   return pool[Math.floor(Math.random() * pool.length)] ?? pool[0] ?? "";
 }
 
-export function getFighterSelectionLabel(selectionId: string | null | undefined) {
+export function getFighterSelectionLabel(
+  selectionId: string | null | undefined,
+  roster: FighterSelectionRoster = fighterRoster,
+) {
   if (isRandomFighterSelection(selectionId)) {
     return "Random";
   }
 
-  return fighterRoster[selectionId ?? ""]?.name ?? "Random";
+  return roster[selectionId ?? ""]?.name ?? "Random";
 }
 
 export function resolveFighterSelection(
   selectionId: string | null | undefined,
   excludingId?: string | null,
   fallbackId?: string | null,
+  roster: FighterSelectionRoster = fighterRoster,
 ) {
   if (isRandomFighterSelection(selectionId)) {
-    return pickRandomFighterId(excludingId);
+    return pickRandomFighterId(excludingId, roster);
   }
 
-  if (selectionId && fighterRoster[selectionId]) {
+  if (selectionId && roster[selectionId]) {
     return selectionId;
   }
 
-  if (fallbackId && fighterRoster[fallbackId]) {
+  if (fallbackId && roster[fallbackId]) {
     return fallbackId;
   }
 
-  return pickRandomFighterId(excludingId);
+  return pickRandomFighterId(excludingId, roster);
 }

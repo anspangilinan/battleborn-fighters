@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
+import {
+  getFighterAnimationDirectories,
+  getFighterPortraitCandidates,
+} from "@/lib/fighter-assets";
 
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
 import { MenuControlsHint } from "@/components/menu-controls";
@@ -32,9 +36,9 @@ type MenuEntry = {
   label: string;
 };
 
-function toAssetSegment(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
+type HomeScreenProps = {
+  showLab?: boolean;
+};
 
 function preloadImage(src: string) {
   return new Promise<boolean>((resolve) => {
@@ -72,13 +76,7 @@ async function loadSequentialFrames(assetDirectory: string) {
 }
 
 async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
-  const roots = Array.from(new Set([fighter.id, toAssetSegment(fighter.name)]));
-  const candidateDirectories = roots.flatMap((root) => [
-    `/characters/${root}/animations/idle/`,
-    `/characters/${root}/idle/`,
-  ]);
-
-  for (const directory of candidateDirectories) {
+  for (const directory of getFighterAnimationDirectories(fighter, "idle")) {
     const frames = await loadSequentialFrames(directory);
     if (frames.length > 0) {
       return frames;
@@ -89,17 +87,7 @@ async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
 }
 
 async function discoverPortraitSource(fighter: (typeof fighters)[number]) {
-  const roots = Array.from(new Set([fighter.id, toAssetSegment(fighter.name)]));
-  if (await preloadImage(fighter.sprites.portrait)) {
-    return fighter.sprites.portrait;
-  }
-
-  const portraitCandidates = roots.flatMap((root) => [
-    `/characters/${root}/portrait.png`,
-    `/characters/${root}/animations/portrait.png`,
-  ]);
-
-  for (const candidate of portraitCandidates) {
+  for (const candidate of getFighterPortraitCandidates(fighter)) {
     if (await preloadImage(candidate)) {
       return candidate;
     }
@@ -207,16 +195,19 @@ function pickRandomMenuPair(previousPair?: [string, string]): [string, string] {
   return [fighters[0].id, fighters[1]?.id ?? fighters[0].id];
 }
 
-const menuEntries: MenuEntry[] = [
-  { href: "/fight?mode=arcade", label: "Arcade" },
-  { href: "/fight?mode=training", label: "Training" },
-  { href: "/online", label: "Find Match", disabled: true },
-  { href: "/animation-lab", label: "Lab" },
-  { href: "/credits", label: "Credits" },
-];
+function getMenuEntries(showLab: boolean): MenuEntry[] {
+  return [
+    { href: "/fight?mode=arcade", label: "Arcade" },
+    { href: "/fight?mode=training", label: "Training" },
+    { href: "/online", label: "Find Match", disabled: true },
+    ...(showLab ? [{ href: "/animation-lab", label: "Lab" }] : []),
+    { href: "/credits", label: "Credits" },
+  ];
+}
 
-export function HomeScreen() {
+export function HomeScreen({ showLab = false }: HomeScreenProps) {
   const router = useRouter();
+  const menuEntries = useMemo(() => getMenuEntries(showLab), [showLab]);
   const [stage, setStage] = useState<HomeScreenStage>("title");
   const [menuPair, setMenuPair] = useState<[string, string]>(() => pickRandomMenuPair());
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(() =>
@@ -256,7 +247,7 @@ export function HomeScreen() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", advanceToMenu);
     };
-  }, [stage]);
+  }, [menuEntries, stage]);
 
   useEffect(() => {
     if (stage !== "menu") {
@@ -322,7 +313,7 @@ export function HomeScreen() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [router, selectedMenuIndex, stage]);
+  }, [menuEntries, router, selectedMenuIndex, stage]);
 
   if (stage === "title") {
     return (

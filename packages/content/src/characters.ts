@@ -311,6 +311,169 @@ const mcbalut: CharacterDefinition = {
   },
 };
 
+export const mcbalutAnomaly: CharacterDefinition = {
+  id: 'mcbalut-anomaly',
+  name: 'mcbalut',
+  palette: {
+    primary: '#7de06e',
+    accent: '#f6dd67',
+    shadow: '#1d3b28',
+  },
+  sprites: {
+    portrait: '/characters/mcbalut-anomaly/profile.png',
+    renderHeight: 128,
+    assetRoot: 'mcbalut-anomaly',
+    stanceAliases: {
+      special: ['attack2'],
+    },
+  },
+  bot: {
+    aggressiveness: 1,
+    arenaMovement: {
+      preferredDistanceMultiplier: 1.04,
+      approachBias: 0.78,
+      retreatBias: 0.16,
+      jumpInChance: 0.22,
+      dashJumpForwardChance: 0.36,
+      dashJumpBackwardChance: 0.18,
+    },
+    skillChoice: {
+      punchWeight: 2.8,
+      kickWeight: 2.5,
+      specialWeight: 1.9,
+      attackCadenceMultiplier: 0.4,
+    },
+    defense: {
+      blockChance: 1,
+      projectileDodgeChance: 1,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 2,
+    },
+  },
+  stats: {
+    maxHealth: 1060,
+    movement: {
+      walkSpeed: 6.2,
+      jumpVelocity: 18.5,
+      gravity: 1.02,
+      dash: {
+        distance: 138,
+        speed: 15.5,
+        lift: 4.4,
+      },
+    },
+    pushWidth: 24,
+  },
+  standingBoxes: {
+    hurtboxes: [{ x: -22, y: -110, width: 44, height: 110 }],
+  },
+  jumpingBoxes: {
+    hurtboxes: [{ x: -24, y: -96, width: 48, height: 96 }],
+  },
+  moves: {
+    punch: {
+      id: 'punch',
+      label: 'Anomaly Shot',
+      button: 'punch',
+      startup: 4,
+      active: 1,
+      recovery: 8,
+      cooldownSeconds: 0.35,
+      projectile: {
+        sprite: 'mcbalut/crossbow-bolt',
+        tier: 99,
+        guardBypass: true,
+        offsetX: 44,
+        offsetY: -62,
+        speed: 27,
+        minimumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: 'origin',
+        hitbox: hitbox({
+          x: -20,
+          y: -5,
+          width: 40,
+          height: 10,
+          damage: 82,
+          hitstun: 13,
+          knockbackX: 11,
+        }),
+      },
+    },
+    kick: {
+      id: 'kick',
+      label: 'Rift Splitter',
+      button: 'kick',
+      startup: 5,
+      active: 1,
+      recovery: 10,
+      cooldownSeconds: 0.45,
+      projectile: {
+        sprite: 'mcbalut/crossbow-bolt',
+        tier: 99,
+        guardBypass: true,
+        spriteScale: 1.25,
+        offsetX: 46,
+        offsetY: -58,
+        speed: 32,
+        minimumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: 'origin',
+        hitbox: hitbox({
+          x: -24,
+          y: -6,
+          width: 48,
+          height: 12,
+          damage: 108,
+          hitstun: 16,
+          knockbackX: 14,
+        }),
+      },
+    },
+    special: {
+      id: 'special',
+      label: 'Anomaly Barrage',
+      button: 'special',
+      startup: 14,
+      active: 2,
+      recovery: 18,
+      cooldownSeconds: 6.5,
+      specialSequence: {
+        buildUpFrames: 14,
+        animationBuildUpFrames: 10,
+        pauseFrames: 6,
+        zoomOutFrames: 6,
+        holdUntilGroundedAfterBuildUp: true,
+        zoomScale: 1.9,
+      },
+      projectile: {
+        sprite: 'mcbalut/crossbow-bolt',
+        tier: 99,
+        guardBypass: true,
+        spawnFrame: 21,
+        shotCount: 3,
+        shotIntervalFrames: 2,
+        offsetX: 42,
+        offsetY: -60,
+        speed: 38,
+        targeting: 'opponent',
+        minimumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: 'origin',
+        hitbox: hitbox({
+          x: -22,
+          y: -6,
+          width: 44,
+          height: 12,
+          damage: 78,
+          hitstun: 14,
+          knockbackX: 10,
+        }),
+      },
+    },
+  },
+};
+
 const digv: CharacterDefinition = {
   id: 'digv',
   name: 'DigV',
@@ -474,7 +637,10 @@ const paraktaktak: CharacterDefinition = {
   },
   sprites: {
     portrait: '/characters/paraktaktak/portrait.png',
-    renderHeight: 165,
+    renderHeight: 135,
+    stanceAliases: {
+      special: ['attack2'],
+    },
   },
   bot: {
     aggressiveness: 0.84,
@@ -611,8 +777,13 @@ const distorted: CharacterDefinition = {
     shadow: '#1b1f36',
   },
   sprites: {
-    portrait: '/characters/distorted/animations/portrait.png',
+    portrait: '/characters/distorted09/animations/portrait.png',
     renderHeight: 108,
+    assetRoot: 'distorted09',
+    stanceAliases: {
+      attack1: ['attack1a'],
+      attack2: ['attack1b'],
+    },
   },
   bot: {
     aggressiveness: 0.72,
@@ -905,6 +1076,561 @@ const quaneshalatonya: CharacterDefinition = {
   },
 };
 
+const corgi: CharacterDefinition = {
+  id: 'corgi',
+  name: 'Corgi',
+  palette: {
+    primary: '#c8894b',
+    accent: '#fff0c7',
+    shadow: '#4d2f1b',
+  },
+  sprites: {
+    portrait: '/characters/corgi/animations/idle/0.png',
+    renderHeight: 110,
+  },
+  bot: {
+    aggressiveness: 0.82,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.74,
+      approachBias: 0.92,
+      retreatBias: 0.18,
+      jumpInChance: 0.58,
+      dashJumpForwardChance: 0.76,
+      dashJumpBackwardChance: 0.14,
+    },
+    skillChoice: {
+      punchWeight: 1.5,
+      kickWeight: 1.1,
+      specialWeight: 0.95,
+      attackCadenceMultiplier: 0.88,
+    },
+    defense: {
+      blockChance: 0.72,
+      projectileDodgeChance: 0.38,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 4,
+    },
+  },
+  stats: {
+    maxHealth: 960,
+    movement: {
+      walkSpeed: 5.1,
+      jumpVelocity: 15.6,
+      gravity: 1.18,
+      dash: {
+        distance: 102,
+        speed: 10.2,
+        lift: 4.2,
+      },
+    },
+    pushWidth: 20,
+  },
+  standingBoxes: {
+    hurtboxes: [{ x: -26, y: -72, width: 52, height: 72 }],
+  },
+  jumpingBoxes: {
+    hurtboxes: [{ x: -24, y: -64, width: 48, height: 64 }],
+  },
+  moves: {
+    punch: {
+      id: 'punch',
+      label: 'Snout Boop',
+      button: 'punch',
+      startup: 3,
+      active: 2,
+      recovery: 8,
+      cooldownSeconds: 0.45,
+      meleeRange: 48,
+      frameBoxes: {
+        3: {
+          hitboxes: [
+            hitbox({
+              x: 18,
+              y: -46,
+              width: 24,
+              height: 12,
+              damage: 58,
+              hitstun: 9,
+              knockbackX: 7,
+            }),
+          ],
+        },
+      },
+    },
+    kick: {
+      id: 'kick',
+      label: 'Ankle Biter',
+      button: 'kick',
+      startup: 5,
+      active: 3,
+      recovery: 10,
+      cooldownSeconds: 0.75,
+      meleeRange: 58,
+      frameBoxes: {
+        5: {
+          hitboxes: [
+            hitbox({
+              x: 20,
+              y: -34,
+              width: 30,
+              height: 14,
+              damage: 86,
+              hitstun: 12,
+              knockbackX: 10,
+              launchY: 3,
+            }),
+          ],
+        },
+      },
+    },
+    special: {
+      id: 'special',
+      label: 'Zoomies',
+      button: 'special',
+      startup: 7,
+      active: 5,
+      recovery: 14,
+      cooldownSeconds: 1.2,
+      meleeRange: 84,
+      rootVelocityX: 6.8,
+      frameBoxes: {
+        7: {
+          hitboxes: [
+            hitbox({
+              x: 24,
+              y: -40,
+              width: 36,
+              height: 16,
+              damage: 112,
+              hitstun: 17,
+              knockbackX: 14,
+              launchY: 5,
+            }),
+          ],
+          hurtboxes: [{ x: -28, y: -70, width: 56, height: 70 }],
+        },
+      },
+    },
+  },
+};
+
+const leechingshjt: CharacterDefinition = {
+  id: 'leechingshjt',
+  name: 'LeechingShjt',
+  palette: {
+    primary: '#6a274a',
+    accent: '#58d8ff',
+    shadow: '#140f1d',
+  },
+  sprites: {
+    portrait: '/characters/LeechingShjt/Animations/profile.png',
+    renderHeight: 120,
+    assetRoot: 'LeechingShjt',
+  },
+  bot: {
+    aggressiveness: 0.68,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.92,
+      approachBias: 0.78,
+      retreatBias: 0.24,
+      jumpInChance: 0.42,
+      dashJumpForwardChance: 0.62,
+      dashJumpBackwardChance: 0.2,
+    },
+    skillChoice: {
+      punchWeight: 1.2,
+      kickWeight: 1.05,
+      specialWeight: 1.1,
+      attackCadenceMultiplier: 0.9,
+    },
+    defense: {
+      blockChance: 0.78,
+      projectileDodgeChance: 0.44,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 4,
+    },
+  },
+  stats: {
+    maxHealth: 995,
+    movement: {
+      walkSpeed: 4.45,
+      jumpVelocity: 17.6,
+      gravity: 1.1,
+      dash: {
+        distance: 106,
+        speed: 9.2,
+        lift: 5.4,
+      },
+    },
+    pushWidth: 22,
+  },
+  standingBoxes: {
+    hurtboxes: [{ x: -21, y: -104, width: 42, height: 104 }],
+  },
+  jumpingBoxes: {
+    hurtboxes: [{ x: -23, y: -92, width: 46, height: 92 }],
+  },
+  moves: {
+    punch: {
+      id: 'punch',
+      label: 'Leech Jab',
+      button: 'punch',
+      startup: 4,
+      active: 2,
+      recovery: 9,
+      cooldownSeconds: 0.5,
+      meleeRange: 72,
+      frameBoxes: {
+        4: {
+          hitboxes: [
+            hitbox({
+              x: 18,
+              y: -78,
+              width: 26,
+              height: 16,
+              damage: 62,
+              hitstun: 10,
+              knockbackX: 8,
+            }),
+          ],
+        },
+      },
+    },
+    kick: {
+      id: 'kick',
+      label: 'Drain Slice',
+      button: 'kick',
+      startup: 6,
+      active: 3,
+      recovery: 11,
+      cooldownSeconds: 0.8,
+      meleeRange: 82,
+      frameBoxes: {
+        6: {
+          hitboxes: [
+            hitbox({
+              x: 22,
+              y: -72,
+              width: 30,
+              height: 18,
+              damage: 88,
+              hitstun: 13,
+              knockbackX: 10,
+              launchY: 4,
+            }),
+          ],
+        },
+      },
+    },
+    special: {
+      id: 'special',
+      label: 'Blood Rush',
+      button: 'special',
+      startup: 8,
+      active: 4,
+      recovery: 15,
+      cooldownSeconds: 1.25,
+      meleeRange: 90,
+      rootVelocityX: 5.2,
+      frameBoxes: {
+        8: {
+          hitboxes: [
+            hitbox({
+              x: 24,
+              y: -84,
+              width: 36,
+              height: 20,
+              damage: 112,
+              hitstun: 17,
+              knockbackX: 14,
+              launchY: 5,
+            }),
+          ],
+          hurtboxes: [{ x: -20, y: -102, width: 50, height: 102 }],
+        },
+      },
+    },
+  },
+};
+
+const mrsdoc: CharacterDefinition = {
+  id: 'mrsdoc',
+  name: 'MrsDoc',
+  palette: {
+    primary: '#c16f56',
+    accent: '#ffe08c',
+    shadow: '#3f1f1a',
+  },
+  sprites: {
+    portrait: '/characters/mrsdoc/profile.png',
+    renderHeight: 118,
+    assetRoot: 'mrsdoc',
+  },
+  bot: {
+    aggressiveness: 0.58,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.88,
+      approachBias: 0.64,
+      retreatBias: 0.28,
+      jumpInChance: 0.34,
+      dashJumpForwardChance: 0.48,
+      dashJumpBackwardChance: 0.22,
+    },
+    skillChoice: {
+      punchWeight: 1.18,
+      kickWeight: 1.04,
+      specialWeight: 1.08,
+      attackCadenceMultiplier: 0.94,
+    },
+    defense: {
+      blockChance: 0.82,
+      projectileDodgeChance: 0.46,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 4,
+    },
+  },
+  stats: {
+    maxHealth: 1005,
+    movement: {
+      walkSpeed: 4.4,
+      jumpVelocity: 17.8,
+      gravity: 1.08,
+      dash: {
+        distance: 104,
+        speed: 9.1,
+        lift: 5.2,
+      },
+    },
+    pushWidth: 23,
+  },
+  standingBoxes: {
+    hurtboxes: [{ x: -22, y: -102, width: 44, height: 102 }],
+  },
+  jumpingBoxes: {
+    hurtboxes: [{ x: -24, y: -90, width: 48, height: 90 }],
+  },
+  moves: {
+    punch: {
+      id: 'punch',
+      label: 'Clinic Tap',
+      button: 'punch',
+      startup: 4,
+      active: 2,
+      recovery: 9,
+      cooldownSeconds: 0.5,
+      meleeRange: 74,
+      frameBoxes: {
+        4: {
+          hitboxes: [
+            hitbox({
+              x: 18,
+              y: -74,
+              width: 28,
+              height: 16,
+              damage: 64,
+              hitstun: 10,
+              knockbackX: 8,
+            }),
+          ],
+        },
+      },
+    },
+    kick: {
+      id: 'kick',
+      label: 'Case Closed',
+      button: 'kick',
+      startup: 6,
+      active: 3,
+      recovery: 11,
+      cooldownSeconds: 0.82,
+      meleeRange: 84,
+      frameBoxes: {
+        6: {
+          hitboxes: [
+            hitbox({
+              x: 22,
+              y: -70,
+              width: 30,
+              height: 18,
+              damage: 90,
+              hitstun: 13,
+              knockbackX: 10,
+              launchY: 4,
+            }),
+          ],
+        },
+      },
+    },
+    special: {
+      id: 'special',
+      label: 'Emergency Rounds',
+      button: 'special',
+      startup: 8,
+      active: 4,
+      recovery: 16,
+      cooldownSeconds: 1.3,
+      meleeRange: 92,
+      rootVelocityX: 5.4,
+      frameBoxes: {
+        8: {
+          hitboxes: [
+            hitbox({
+              x: 24,
+              y: -82,
+              width: 36,
+              height: 20,
+              damage: 114,
+              hitstun: 17,
+              knockbackX: 14,
+              launchY: 5,
+            }),
+          ],
+          hurtboxes: [{ x: -20, y: -100, width: 50, height: 100 }],
+        },
+      },
+    },
+  },
+};
+
+const anjokbal: CharacterDefinition = {
+  id: 'anjokbal',
+  name: 'Anjokbal',
+  palette: {
+    primary: '#5fbf8e',
+    accent: '#f6d36a',
+    shadow: '#173229',
+  },
+  sprites: {
+    portrait: '/characters/anjokbal/profile.png',
+    renderHeight: 120,
+    assetRoot: 'anjokbal',
+  },
+  bot: {
+    aggressiveness: 0.66,
+    arenaMovement: {
+      preferredDistanceMultiplier: 0.9,
+      approachBias: 0.72,
+      retreatBias: 0.22,
+      jumpInChance: 0.38,
+      dashJumpForwardChance: 0.56,
+      dashJumpBackwardChance: 0.24,
+    },
+    skillChoice: {
+      punchWeight: 1.16,
+      kickWeight: 1.08,
+      specialWeight: 1.12,
+      attackCadenceMultiplier: 0.9,
+    },
+    defense: {
+      blockChance: 0.8,
+      projectileDodgeChance: 0.48,
+      meleeBlockReactionFrames: 1,
+      projectileBlockReactionFrames: 4,
+    },
+  },
+  stats: {
+    maxHealth: 1010,
+    movement: {
+      walkSpeed: 4.35,
+      jumpVelocity: 17.7,
+      gravity: 1.08,
+      dash: {
+        distance: 105,
+        speed: 9.15,
+        lift: 5.1,
+      },
+    },
+    pushWidth: 23,
+  },
+  standingBoxes: {
+    hurtboxes: [{ x: -22, y: -104, width: 44, height: 104 }],
+  },
+  jumpingBoxes: {
+    hurtboxes: [{ x: -24, y: -92, width: 48, height: 92 }],
+  },
+  moves: {
+    punch: {
+      id: 'punch',
+      label: 'Palm Check',
+      button: 'punch',
+      startup: 4,
+      active: 2,
+      recovery: 9,
+      cooldownSeconds: 0.5,
+      meleeRange: 76,
+      frameBoxes: {
+        4: {
+          hitboxes: [
+            hitbox({
+              x: 18,
+              y: -76,
+              width: 28,
+              height: 16,
+              damage: 66,
+              hitstun: 10,
+              knockbackX: 8,
+            }),
+          ],
+        },
+      },
+    },
+    kick: {
+      id: 'kick',
+      label: 'Split Appeal',
+      button: 'kick',
+      startup: 6,
+      active: 3,
+      recovery: 11,
+      cooldownSeconds: 0.84,
+      meleeRange: 86,
+      frameBoxes: {
+        6: {
+          hitboxes: [
+            hitbox({
+              x: 22,
+              y: -72,
+              width: 30,
+              height: 18,
+              damage: 92,
+              hitstun: 13,
+              knockbackX: 10,
+              launchY: 4,
+            }),
+          ],
+        },
+      },
+    },
+    special: {
+      id: 'special',
+      label: 'Tilted Rush',
+      button: 'special',
+      startup: 8,
+      active: 4,
+      recovery: 16,
+      cooldownSeconds: 1.3,
+      meleeRange: 94,
+      rootVelocityX: 5.5,
+      frameBoxes: {
+        8: {
+          hitboxes: [
+            hitbox({
+              x: 24,
+              y: -84,
+              width: 36,
+              height: 20,
+              damage: 116,
+              hitstun: 17,
+              knockbackX: 14,
+              launchY: 5,
+            }),
+          ],
+          hurtboxes: [{ x: -20, y: -102, width: 50, height: 102 }],
+        },
+      },
+    },
+  },
+};
+
 export const characterDefinitions: CharacterDefinition[] = [
   // quaneshalatonya,
   paraktaktak,
@@ -912,4 +1638,12 @@ export const characterDefinitions: CharacterDefinition[] = [
   mcbalut,
   morana,
   distorted,
+  corgi,
+  leechingshjt,
+  mrsdoc,
+  anjokbal,
+];
+
+export const hiddenCharacterDefinitions: CharacterDefinition[] = [
+  mcbalutAnomaly,
 ];

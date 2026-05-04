@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { fighterRoster } from "@battleborn/content";
+import type { CharacterDefinition } from "@battleborn/game-core";
 
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
 import { FightDisplayName } from "@/components/fight-display-name";
@@ -16,6 +16,7 @@ import {
   pickRandomArenaId,
   type ArenaDefinition,
 } from "@/lib/arenas";
+import { buildArcadeOrder } from "@/lib/arcade";
 import {
   getFighterSelectionLabel,
   isRandomFighterSelection,
@@ -31,15 +32,20 @@ import {
   isMenuRightKey,
   isMenuUpKey,
 } from "@/lib/menu-input";
+import {
+  getFighterAnimationDirectories,
+  getFighterHeadshotCandidates,
+  getFighterPortraitCandidates,
+} from "@/lib/fighter-assets";
 
-const fighters = Object.values(fighterRoster);
-const fighterSelectOptionIds = [...fighters.map((fighter) => fighter.id), randomFighterSelectionId];
 const MAX_IDLE_FRAME_SCAN = 24;
 const IDLE_FRAME_MS = 120;
 const RANDOM_CYCLE_MS = 90;
 
 type FightCharacterSelectProps = {
   mode: "local" | "training" | "arcade";
+  fighters: CharacterDefinition[];
+  opponents?: CharacterDefinition[];
   initialFighterId?: string;
   initialOpponentId?: string;
   initialArenaId?: string;
@@ -49,7 +55,7 @@ type FightCharacterSelectProps = {
 type FightCharacterSelectStep = "fighters" | "stage";
 
 type CharacterPreviewProps = {
-  fighter?: (typeof fighters)[number];
+  fighter?: CharacterDefinition;
   facing: "left" | "right";
   label?: string;
   plainLabel?: boolean;
@@ -61,10 +67,6 @@ type StageOptionCardProps = {
   onSelect: () => void;
   selected: boolean;
 };
-
-function toAssetSegment(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
 
 function preloadImage(src: string) {
   return new Promise<boolean>((resolve) => {
@@ -115,39 +117,16 @@ async function loadSequentialFrames(assetDirectory: string) {
   return [];
 }
 
-function getFighterAssetRoots(fighter: (typeof fighters)[number]) {
-  return Array.from(
-    new Set([
-      `/characters/${fighter.id}`,
-      `/characters/${toAssetSegment(fighter.name)}`,
-    ]),
-  );
+async function discoverHeadshotSource(fighter: CharacterDefinition) {
+  return discoverImageSource(getFighterHeadshotCandidates(fighter));
 }
 
-async function discoverHeadshotSource(fighter: (typeof fighters)[number]) {
-  const assetRoots = getFighterAssetRoots(fighter);
-  return discoverImageSource([
-    ...assetRoots.flatMap((root) => [`${root}/headshot.png`, `${root}/animations/headshot.png`]),
-    fighter.sprites.portrait,
-  ]);
+async function discoverPortraitSource(fighter: CharacterDefinition) {
+  return discoverImageSource(getFighterPortraitCandidates(fighter));
 }
 
-async function discoverPortraitSource(fighter: (typeof fighters)[number]) {
-  const assetRoots = getFighterAssetRoots(fighter);
-  return discoverImageSource([
-    fighter.sprites.portrait,
-    ...assetRoots.flatMap((root) => [`${root}/portrait.png`, `${root}/animations/portrait.png`]),
-  ]);
-}
-
-async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
-  const assetRoots = getFighterAssetRoots(fighter);
-  const candidateDirectories = assetRoots.flatMap((root) => [
-    `${root}/animations/idle/`,
-    `${root}/idle/`,
-  ]);
-
-  for (const directory of candidateDirectories) {
+async function discoverIdleFrames(fighter: CharacterDefinition) {
+  for (const directory of getFighterAnimationDirectories(fighter, "idle")) {
     const frames = await loadSequentialFrames(directory);
     if (frames.length > 0) {
       return frames;
@@ -157,7 +136,7 @@ async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
   return [];
 }
 
-function useIdleAnimation(fighter: (typeof fighters)[number] | undefined) {
+function useIdleAnimation(fighter: CharacterDefinition | undefined) {
   const [idleFrames, setIdleFrames] = useState<string[]>([]);
   const [portraitSource, setPortraitSource] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -213,7 +192,11 @@ function useIdleAnimation(fighter: (typeof fighters)[number] | undefined) {
   return idleFrames[currentFrame] ?? portraitSource;
 }
 
-function useRosterCycle(active: boolean, startingOffset = 0) {
+function useRosterCycle(
+  active: boolean,
+  fighters: CharacterDefinition[],
+  startingOffset = 0,
+) {
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (fighters.length === 0) {
       return 0;
@@ -241,7 +224,7 @@ function useRosterCycle(active: boolean, startingOffset = 0) {
     return () => {
       window.clearInterval(timer);
     };
-  }, [active, startingOffset]);
+  }, [active, fighters, startingOffset]);
 
   return fighters[currentIndex];
 }
@@ -332,40 +315,58 @@ function buildFightHref(
   return `/fight?${params.toString()}`;
 }
 
-function shuffleFighterIds(fighterIds: string[]) {
-  const shuffledIds = [...fighterIds];
-
-  for (let index = shuffledIds.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffledIds[index], shuffledIds[swapIndex]] = [shuffledIds[swapIndex], shuffledIds[index]];
-  }
-
-  return shuffledIds;
-}
-
 export function FightCharacterSelect({
   mode,
+  fighters,
+  opponents,
   initialFighterId,
   initialOpponentId,
   initialArenaId,
   initialStep = "fighters",
 }: FightCharacterSelectProps) {
   const router = useRouter();
+  const opponentFighters = opponents ?? fighters;
+  const fighterRoster = useMemo(
+    () => Object.fromEntries(fighters.map((fighter) => [fighter.id, fighter])),
+    [fighters],
+  );
+  const opponentRoster = useMemo(
+    () => Object.fromEntries(opponentFighters.map((fighter) => [fighter.id, fighter])),
+    [opponentFighters],
+  );
+  const fighterLookup = useMemo(
+    () =>
+      Object.fromEntries(
+        [...fighters, ...opponentFighters].map((fighter) => [fighter.id, fighter]),
+      ),
+    [fighters, opponentFighters],
+  );
+  const fighterSelectOptionIds = useMemo(
+    () => [...fighters.map((fighter) => fighter.id), randomFighterSelectionId],
+    [fighters],
+  );
+  const opponentSelectOptionIds = useMemo(
+    () => [...opponentFighters.map((fighter) => fighter.id), randomFighterSelectionId],
+    [opponentFighters],
+  );
   const defaultFighter = fighters[0];
-  const defaultOpponent = fighters[1] ?? fighters[0];
+  const defaultOpponent =
+    opponentFighters.find((fighter) => fighter.id !== initialFighterId) ??
+    opponentFighters[0] ??
+    defaultFighter;
   const [step, setStep] = useState<FightCharacterSelectStep>(
     mode === "arcade" ? "fighters" : initialStep,
   );
   const [activeRoster, setActiveRoster] = useState<"fighter" | "opponent">("fighter");
   const [selectedFighterId, setSelectedFighterId] = useState(() =>
-    isSelectableFighterSelection(initialFighterId)
+    isSelectableFighterSelection(initialFighterId, fighterRoster)
       ? initialFighterId
       : defaultFighter?.id ?? "",
   );
   const [selectedOpponentId, setSelectedOpponentId] = useState(() =>
-    isSelectableFighterSelection(initialOpponentId)
+    isSelectableFighterSelection(initialOpponentId, opponentRoster)
       ? initialOpponentId
-      : fighters.find((fighter) => fighter.id !== initialFighterId)?.id ??
+      : opponentFighters.find((fighter) => fighter.id !== initialFighterId)?.id ??
         defaultOpponent?.id ??
         "",
   );
@@ -378,36 +379,38 @@ export function FightCharacterSelect({
   >(null);
 
   const selectedFighter = useMemo(
-    () => fighters.find((fighter) => fighter.id === selectedFighterId) ?? null,
-    [selectedFighterId],
+    () => fighterLookup[selectedFighterId] ?? null,
+    [fighterLookup, selectedFighterId],
   );
   const selectedOpponent = useMemo(
-    () => fighters.find((fighter) => fighter.id === selectedOpponentId) ?? null,
-    [selectedOpponentId],
+    () => fighterLookup[selectedOpponentId] ?? null,
+    [fighterLookup, selectedOpponentId],
   );
   const selectedArena = useMemo(() => getArena(selectedArenaId), [selectedArenaId]);
   const arcadeOrder = useMemo(
     () => mode === "arcade" && !isRandomFighterSelection(selectedFighterId)
-      ? shuffleFighterIds(
-          fighters
-            .map((fighter) => fighter.id)
-            .filter((fighterId) => fighterId !== selectedFighterId),
+      ? buildArcadeOrder(
+          selectedFighterId,
+          Object.fromEntries(
+            opponentFighters.map((fighter) => [fighter.id, { name: fighter.name }]),
+          ),
         )
       : [],
-    [mode, selectedFighterId],
+    [mode, opponentFighters, selectedFighterId],
   );
   const arcadeArenaId = useMemo(
     () => (mode === "arcade" ? pickRandomArenaId() : selectedArena.id),
-    [mode, selectedArena.id, selectedFighterId],
+    [mode, selectedArena.id],
   );
   const showFighterRandomCycle =
     hoveredRandomRoster === "fighter" || isRandomFighterSelection(selectedFighterId);
   const showOpponentRandomCycle =
     hoveredRandomRoster === "opponent" || isRandomFighterSelection(selectedOpponentId);
-  const fighterRandomPreview = useRosterCycle(showFighterRandomCycle);
+  const fighterRandomPreview = useRosterCycle(showFighterRandomCycle, fighters);
   const opponentRandomPreview = useRosterCycle(
     showOpponentRandomCycle,
-    Math.max(1, Math.floor(fighters.length / 2)),
+    opponentFighters,
+    Math.max(1, Math.floor(opponentFighters.length / 2)),
   );
   const previewFighter = showFighterRandomCycle ? fighterRandomPreview ?? defaultFighter : selectedFighter ?? defaultFighter;
   const previewOpponent = showOpponentRandomCycle ? opponentRandomPreview ?? defaultOpponent : selectedOpponent ?? defaultOpponent;
@@ -430,10 +433,10 @@ export function FightCharacterSelect({
       )
     : undefined;
   const matchupLabel = mode === "training"
-    ? `${getFighterSelectionLabel(selectedFighterId)} vs ${getFighterSelectionLabel(selectedOpponentId)}`
+    ? `${getFighterSelectionLabel(selectedFighterId, fighterLookup)} vs ${getFighterSelectionLabel(selectedOpponentId, fighterLookup)}`
     : mode === "arcade"
-      ? `${getFighterSelectionLabel(selectedFighterId)} vs Arcade`
-      : `${getFighterSelectionLabel(selectedFighterId)} vs Random`;
+      ? `${getFighterSelectionLabel(selectedFighterId, fighterLookup)} vs Arcade`
+      : `${getFighterSelectionLabel(selectedFighterId, fighterLookup)} vs Random`;
   const matchupHint = mode === "training"
     ? "Matchup locked. Pick the arena."
     : mode === "arcade"
@@ -445,7 +448,9 @@ export function FightCharacterSelect({
 
     async function loadHeadshots() {
       const headshotEntries = await Promise.all(
-        fighters.map(async (fighter) => [fighter.id, await discoverHeadshotSource(fighter)] as const),
+        Object.values(fighterLookup).map(
+          async (fighter) => [fighter.id, await discoverHeadshotSource(fighter)] as const,
+        ),
       );
 
       if (cancelled) {
@@ -460,7 +465,7 @@ export function FightCharacterSelect({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fighterLookup]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -497,13 +502,17 @@ export function FightCharacterSelect({
         if (isMenuUpKey(event) || (mode !== "training" && isMenuLeftKey(event))) {
           event.preventDefault();
           const currentId = activeRoster === "opponent" ? selectedOpponentId : selectedFighterId;
-          const currentIndex = fighterSelectOptionIds.indexOf(currentId);
+          const optionIds =
+            activeRoster === "opponent" && mode === "training"
+              ? opponentSelectOptionIds
+              : fighterSelectOptionIds;
+          const currentIndex = optionIds.indexOf(currentId);
           const nextIndex = getWrappedIndex(
             currentIndex >= 0 ? currentIndex : 0,
             -1,
-            fighterSelectOptionIds.length,
+            optionIds.length,
           );
-          const nextId = fighterSelectOptionIds[nextIndex];
+          const nextId = optionIds[nextIndex];
           if (!nextId) {
             return;
           }
@@ -519,13 +528,17 @@ export function FightCharacterSelect({
         if (isMenuDownKey(event) || (mode !== "training" && isMenuRightKey(event))) {
           event.preventDefault();
           const currentId = activeRoster === "opponent" ? selectedOpponentId : selectedFighterId;
-          const currentIndex = fighterSelectOptionIds.indexOf(currentId);
+          const optionIds =
+            activeRoster === "opponent" && mode === "training"
+              ? opponentSelectOptionIds
+              : fighterSelectOptionIds;
+          const currentIndex = optionIds.indexOf(currentId);
           const nextIndex = getWrappedIndex(
             currentIndex >= 0 ? currentIndex : 0,
             1,
-            fighterSelectOptionIds.length,
+            optionIds.length,
           );
-          const nextId = fighterSelectOptionIds[nextIndex];
+          const nextId = optionIds[nextIndex];
           if (!nextId) {
             return;
           }
@@ -586,7 +599,9 @@ export function FightCharacterSelect({
   }, [
     activeRoster,
     ctaHref,
+    fighterSelectOptionIds,
     mode,
+    opponentSelectOptionIds,
     router,
     selectedArenaId,
     selectedFighterId,
@@ -699,7 +714,7 @@ export function FightCharacterSelect({
             role="list"
             aria-label="Opponent roster"
           >
-            {fighters.map((fighter) => (
+            {opponentFighters.map((fighter) => (
               <button
                 key={`${fighter.id}-opponent`}
                 type="button"

@@ -4,6 +4,17 @@ export type Button = "punch" | "kick" | "special";
 export type FighterAction = "idle" | "walk" | "dash" | "jump" | "guard" | "attack" | "hit" | "ko";
 export type SpecialMovePhase = "build-up" | "landing-hold" | "pause" | "zoom-out" | "follow-through";
 export type MoveAnimationStance = "attack1" | "attack2" | "special";
+export type SpriteAnimationStance =
+  | "idle"
+  | "walk"
+  | "jump"
+  | "block"
+  | "dash"
+  | "hurt"
+  | "ko"
+  | "win"
+  | MoveAnimationStance
+  | "special-pose";
 export type JuggleState = "airborne" | "recovery";
 
 export interface InputState {
@@ -76,6 +87,7 @@ export interface SpecialSequenceDefinition {
 export interface ProjectileDefinition {
   sprite: string;
   tier: number;
+  guardBypass?: boolean;
   spawnFrame?: number;
   shotCount?: number;
   shotIntervalFrames?: number;
@@ -147,6 +159,8 @@ export interface CharacterDefinition {
   sprites: {
     portrait: string;
     renderHeight?: number;
+    assetRoot?: string;
+    stanceAliases?: Partial<Record<SpriteAnimationStance, string[]>>;
   };
   standingBoxes: FrameBoxes;
   jumpingBoxes: FrameBoxes;
@@ -202,6 +216,7 @@ export interface ProjectileRuntimeState {
   moveId: string;
   sprite: string;
   tier: number;
+  guardBypass?: boolean;
   spriteScale?: number;
   x: number;
   y: number;

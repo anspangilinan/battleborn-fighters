@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
+import { getFighterAnimationDirectories } from "@/lib/fighter-assets";
 import { isMenuBackKey } from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
@@ -45,10 +46,6 @@ type FighterFrameState = Record<string, string[] | null>;
 
 const MAX_FRAME_SCAN = 24;
 const FRAME_DURATION_MS = 120;
-
-function toAssetSegment(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
 
 function preloadImage(src: string) {
   return new Promise<boolean>((resolve) => {
@@ -131,17 +128,10 @@ function repeatLastFrame(frameSources: string[], duration: number) {
 }
 
 async function discoverFrameSources(
-  fighterId: string,
-  fighterName: string,
+  fighter: (typeof fighters)[number],
   stance: AnimationStanceId,
 ) {
-  const candidateRoots = Array.from(new Set([fighterId, toAssetSegment(fighterName)]));
-  const candidateDirectories = candidateRoots.flatMap((root) => [
-    `/characters/${root}/animations/${stance}/`,
-    `/characters/${root}/${stance}/`,
-  ]);
-
-  for (const directory of candidateDirectories) {
+  for (const directory of getFighterAnimationDirectories(fighter, stance)) {
     const frames = await loadSequentialFrames(directory);
     if (frames.length > 0) {
       return frames;
@@ -226,12 +216,12 @@ async function discoverPreviewFrameSources(
   previewId: PreviewId,
 ) {
   if (isAnimationStanceId(previewId)) {
-    return discoverFrameSources(fighter.id, fighter.name, previewId);
+    return discoverFrameSources(fighter, previewId);
   }
 
   const [specialSources, specialPoseSources] = await Promise.all([
-    discoverFrameSources(fighter.id, fighter.name, "special"),
-    discoverFrameSources(fighter.id, fighter.name, "special-pose"),
+    discoverFrameSources(fighter, "special"),
+    discoverFrameSources(fighter, "special-pose"),
   ]);
 
   return buildSpecialSequenceFrames(fighter, specialSources, specialPoseSources);

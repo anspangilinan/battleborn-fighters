@@ -1124,6 +1124,7 @@ function maybeSpawnProjectile(
     moveId: move.id,
     sprite: projectile.sprite,
     tier: projectile.tier,
+    guardBypass: projectile.guardBypass,
     spriteScale: projectile.spriteScale,
     x: spawnX,
     y: spawnY,
@@ -1762,7 +1763,7 @@ function resolveProjectileHits(
       continue;
     }
 
-    if (canBlockIncomingHit(defender, projectile.facing)) {
+    if (!projectile.guardBypass && canBlockIncomingHit(defender, projectile.facing)) {
       const interactionDamage = getDamageAmount(projectile.hitbox, attacker);
       const chipDamage = getChipDamage(projectile.hitbox, attacker);
       defender.health = Math.max(0, defender.health - chipDamage);

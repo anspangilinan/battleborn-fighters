@@ -75,6 +75,8 @@ export const characterSchema = z.object({
   sprites: z.object({
     portrait: z.string(),
     renderHeight: z.number().positive().optional(),
+    assetRoot: z.string().optional(),
+    stanceAliases: z.record(z.string(), z.array(z.string())).optional(),
   }),
   stats: z.object({
     maxHealth: z.number().int().positive(),

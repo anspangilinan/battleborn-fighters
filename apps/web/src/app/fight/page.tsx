@@ -1,10 +1,14 @@
-import { fighterRoster } from "@battleborn/content";
+import { fighterRoster, hiddenFighterRoster } from "@battleborn/content";
+import type { CharacterDefinition } from "@battleborn/game-core";
 
 import { FightCharacterSelect } from "@/components/fight-character-select";
 import { FightScene } from "@/components/fight-scene";
 import { defaultArenaId, isArenaId, pickRandomArenaId } from "@/lib/arenas";
+import { arcadeFinalBossId, parseArcadeOrder } from "@/lib/arcade";
+import { isMasterModeEnabled } from "@/lib/feature-flags";
 import {
   isRandomFighterSelection,
+  pickRandomFighterId,
   isSelectableFighterSelection,
   resolveFighterSelection,
 } from "@/lib/fighter-select";
@@ -13,57 +17,13 @@ interface FightPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-function shuffleFighterIds(fighterIds: string[]) {
-  const shuffledIds = [...fighterIds];
+type FighterRosterMap = Record<string, CharacterDefinition>;
 
-  for (let index = shuffledIds.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffledIds[index], shuffledIds[swapIndex]] = [shuffledIds[swapIndex], shuffledIds[index]];
-  }
-
-  return shuffledIds;
-}
-
-function pickRandomOpponent(fighterId: string) {
-  const opponentOptions = Object.keys(fighterRoster).filter((id) => id !== fighterId);
-
-  if (opponentOptions.length === 0) {
-    return fighterId;
-  }
-
-  return opponentOptions[Math.floor(Math.random() * opponentOptions.length)];
-}
-
-function parseArcadeOrder(rawArcadeOrder: string | string[] | undefined, fighterId: string) {
-  const eligibleOpponentIds = Object.keys(fighterRoster).filter((id) => id !== fighterId);
-  if (eligibleOpponentIds.length === 0) {
-    return [];
-  }
-
-  if (typeof rawArcadeOrder !== "string") {
-    return shuffleFighterIds(eligibleOpponentIds);
-  }
-
-  const parsedIds = rawArcadeOrder
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry, index, entries) =>
-      entry.length > 0 &&
-      entry !== fighterId &&
-      Boolean(fighterRoster[entry]) &&
-      entries.indexOf(entry) === index,
-    );
-
-  if (parsedIds.length !== eligibleOpponentIds.length) {
-    return shuffleFighterIds(eligibleOpponentIds);
-  }
-
-  const eligibleOpponentSet = new Set(eligibleOpponentIds);
-  if (parsedIds.some((entry) => !eligibleOpponentSet.has(entry))) {
-    return shuffleFighterIds(eligibleOpponentIds);
-  }
-
-  return parsedIds;
+function pickRandomOpponent(
+  fighterId: string,
+  roster: FighterRosterMap,
+) {
+  return pickRandomFighterId(fighterId, roster) || fighterId;
 }
 
 export default async function FightPage({ searchParams }: FightPageProps) {
@@ -75,19 +35,46 @@ export default async function FightPage({ searchParams }: FightPageProps) {
       : params.mode === "arcade"
         ? "arcade"
       : "local";
-  const defaultFighterId = fighterRoster.mcbalut ? "mcbalut" : Object.keys(fighterRoster)[0];
+  const publicRoster: FighterRosterMap = fighterRoster;
+  const masterRoster: FighterRosterMap = isMasterModeEnabled()
+    ? { ...publicRoster, ...hiddenFighterRoster }
+    : publicRoster;
+  const playableRoster: FighterRosterMap =
+    mode === "online"
+      ? publicRoster
+      : masterRoster;
+  const arcadeRoster: FighterRosterMap =
+    hiddenFighterRoster[arcadeFinalBossId]
+      ? {
+          ...playableRoster,
+          [arcadeFinalBossId]: hiddenFighterRoster[arcadeFinalBossId],
+        }
+      : playableRoster;
+  const matchRoster = mode === "arcade" ? arcadeRoster : playableRoster;
+  const fighterOptions = Object.values(playableRoster);
+  const opponentOptions = Object.values(mode === "arcade" ? arcadeRoster : playableRoster);
+  const defaultFighterId = playableRoster.mcbalut ? "mcbalut" : Object.keys(playableRoster)[0];
   const explicitFighterSelection =
-    typeof params.fighter === "string" && isSelectableFighterSelection(params.fighter)
+    typeof params.fighter === "string" && isSelectableFighterSelection(params.fighter, playableRoster)
       ? params.fighter
       : null;
   const explicitOpponentSelection =
-    typeof params.opponent === "string" && isSelectableFighterSelection(params.opponent)
+    typeof params.opponent === "string" &&
+      isSelectableFighterSelection(
+        params.opponent,
+        mode === "arcade" ? arcadeRoster : playableRoster,
+      )
       ? params.opponent
       : null;
   const explicitArenaId = typeof params.arena === "string" && isArenaId(params.arena) ? params.arena : null;
-  const fighterId = resolveFighterSelection(explicitFighterSelection, null, defaultFighterId);
+  const fighterId = resolveFighterSelection(
+    explicitFighterSelection,
+    null,
+    defaultFighterId,
+    playableRoster,
+  );
   const arcadeOrder = mode === "arcade"
-    ? parseArcadeOrder(params.arcadeOrder, fighterId)
+    ? parseArcadeOrder(params.arcadeOrder, fighterId, arcadeRoster)
     : [];
   const parsedArcadeIndex = mode === "arcade" && typeof params.arcadeIndex === "string"
     ? Number.parseInt(params.arcadeIndex, 10)
@@ -96,19 +83,31 @@ export default async function FightPage({ searchParams }: FightPageProps) {
     ? Math.min(parsedArcadeIndex, Math.max(0, arcadeOrder.length - 1))
     : 0;
   const fallbackOpponent = mode === "local"
-    ? pickRandomOpponent(fighterId)
+    ? pickRandomOpponent(fighterId, playableRoster)
     : mode === "arcade"
-      ? arcadeOrder[arcadeIndex] ?? resolveFighterSelection(explicitOpponentSelection, fighterId) ?? pickRandomOpponent(fighterId)
-    : fighterId === "digv" && fighterRoster.mcbalut
+      ? arcadeOrder[arcadeIndex] ??
+        resolveFighterSelection(explicitOpponentSelection, fighterId, undefined, arcadeRoster) ??
+        pickRandomOpponent(fighterId, arcadeRoster)
+    : fighterId === "digv" && playableRoster.mcbalut
     ? "mcbalut"
-    : fighterId === "mcbalut" && fighterRoster.digv
+    : fighterId === "mcbalut" && playableRoster.digv
       ? "digv"
-      : Object.keys(fighterRoster).find((id) => id !== fighterId) ?? fighterId;
+      : Object.keys(playableRoster).find((id) => id !== fighterId) ?? fighterId;
   const opponentId = mode === "training"
-    ? resolveFighterSelection(explicitOpponentSelection, fighterId, fallbackOpponent)
+    ? resolveFighterSelection(
+        explicitOpponentSelection,
+        fighterId,
+        fallbackOpponent,
+        playableRoster,
+      )
     : mode === "arcade"
       ? fallbackOpponent
-      : resolveFighterSelection(explicitOpponentSelection, fighterId, fallbackOpponent);
+      : resolveFighterSelection(
+          explicitOpponentSelection,
+          fighterId,
+          fallbackOpponent,
+          playableRoster,
+        );
   const arenaId = mode === "arcade"
     ? explicitArenaId ?? pickRandomArenaId()
     : explicitArenaId ?? defaultArenaId;
@@ -133,6 +132,8 @@ export default async function FightPage({ searchParams }: FightPageProps) {
       <main className="fight-page fight-character-select-page">
         <FightCharacterSelect
           mode={mode}
+          fighters={fighterOptions}
+          opponents={opponentOptions}
           initialFighterId={explicitFighterSelection ?? defaultFighterId}
           initialOpponentId={explicitOpponentSelection ?? fallbackOpponent}
           initialArenaId={arenaId}
@@ -146,6 +147,7 @@ export default async function FightPage({ searchParams }: FightPageProps) {
     <main className="fight-page">
       <FightScene
         mode={mode}
+        roster={matchRoster}
         fighterId={fighterId}
         opponentId={opponentId}
         arenaId={arenaId}

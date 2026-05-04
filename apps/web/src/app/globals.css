@@ -1109,7 +1109,7 @@ body.fight-route-active .app-content {
 }
 
 .fight-hud-shell {
-  --fight-hud-side-width: clamp(56px, 7cqw, 84px);
+  --fight-hud-side-width: clamp(64px, 8cqw, 96px);
   position: absolute;
   inset: 0;
   display: grid;
@@ -1422,7 +1422,7 @@ body.fight-route-active .app-content {
 .fight-hud-name {
   color: #f7f4dc;
   font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
-  font-size: clamp(0.9rem, 1.45cqw, 1.12rem);
+  font-size: clamp(1rem, 1.7cqw, 1.28rem);
   letter-spacing: 0.04em;
   line-height: 1;
   display: inline-block;
@@ -1443,7 +1443,7 @@ body.fight-route-active .app-content {
   display: flex;
   align-items: flex-start;
   width: var(--fight-hud-side-width);
-  min-height: 1.1em;
+  min-height: 1.18em;
   min-width: 0;
   overflow: visible;
   white-space: nowrap;
@@ -2527,19 +2527,29 @@ body.fight-route-active .app-content {
   justify-items: start;
 }
 
-.fight-loading-portrait {
+.fight-loading-fighter-shell {
+  display: grid;
+  align-items: end;
+  justify-items: center;
   width: min(38cqw, 520px);
-  max-height: min(82cqh, 760px);
+  min-height: min(56cqh, 420px);
+}
+
+.fight-loading-fighter-sprite {
+  width: auto;
+  height: min(var(--fight-loading-fighter-height, 470px), 64cqh, 560px);
+  max-width: 100%;
   object-fit: contain;
   image-rendering: pixelated;
+  transform-origin: 50% 100%;
   filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.35));
 }
 
-.fight-loading-portrait-player {
+.fight-loading-fighter-sprite-player {
   justify-self: end;
 }
 
-.fight-loading-portrait-opponent {
+.fight-loading-fighter-sprite-opponent {
   justify-self: start;
   transform: scaleX(-1);
 }
@@ -2580,16 +2590,129 @@ body.fight-route-active .app-content {
 
 .fight-loading-label {
   margin: 0;
-  color: var(--text);
-  font-size: clamp(1.05rem, 2cqw, 1.4rem);
-  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
-  letter-spacing: 0.18em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(32cqw, 540px);
+  font-size: clamp(1.7rem, 3.6cqw, 3.1rem);
+  letter-spacing: 0.05em;
+  line-height: 0.9;
   text-align: center;
   text-shadow:
     -2px -2px 0 rgba(8, 12, 20, 0.92),
     2px -2px 0 rgba(8, 12, 20, 0.92),
     -2px 2px 0 rgba(8, 12, 20, 0.92),
     2px 2px 0 rgba(8, 12, 20, 0.92);
+}
+
+.fight-loading-label-plain {
+  color: var(--text);
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.fight-arcade-result-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(20px, 4cqw, 40px);
+  background:
+    linear-gradient(180deg, rgba(4, 10, 18, 0.9), rgba(4, 10, 18, 0.78)),
+    radial-gradient(circle at 18% 24%, rgba(255, 216, 112, 0.12), transparent 34%),
+    radial-gradient(circle at 82% 28%, rgba(90, 214, 255, 0.16), transparent 38%);
+  z-index: 4;
+}
+
+.fight-arcade-result-win {
+  --fight-arcade-result-border: rgba(114, 226, 255, 0.34);
+  --fight-arcade-result-glow: rgba(90, 214, 255, 0.16);
+}
+
+.fight-arcade-result-lose {
+  --fight-arcade-result-border: rgba(255, 142, 112, 0.34);
+  --fight-arcade-result-glow: rgba(255, 122, 104, 0.14);
+}
+
+.fight-arcade-result-panel {
+  display: grid;
+  justify-items: center;
+  gap: clamp(18px, 3.4cqw, 28px);
+  width: min(720px, 100%);
+  padding: clamp(22px, 4cqw, 34px);
+  border: 1px solid var(--fight-arcade-result-border);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(10, 18, 31, 0.96), rgba(6, 10, 18, 0.97)),
+    radial-gradient(circle at top, var(--fight-arcade-result-glow), transparent 52%);
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.fight-arcade-result-faceoff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(14px, 2.6cqw, 30px);
+  width: min(100%, 540px);
+}
+
+.fight-arcade-result-headshot-shell {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 1;
+  padding: clamp(8px, 1.6cqw, 12px);
+  border: 1px solid var(--fight-arcade-result-border);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 46%),
+    linear-gradient(180deg, rgba(14, 22, 38, 0.98), rgba(7, 12, 21, 0.98));
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.fight-arcade-result-headshot-shell-opponent .fight-arcade-result-headshot {
+  transform: scaleX(-1);
+}
+
+.fight-arcade-result-headshot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.fight-arcade-result-divider {
+  width: clamp(8px, 1cqw, 12px);
+  height: clamp(92px, 16cqh, 156px);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 240, 127, 0.7), rgba(255, 255, 255, 0)),
+    linear-gradient(180deg, rgba(46, 220, 255, 0.08), rgba(255, 122, 104, 0.08));
+  box-shadow: 0 0 24px var(--fight-arcade-result-glow);
+}
+
+.fight-arcade-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.fight-arcade-result-action {
+  min-width: 172px;
+  justify-content: center;
 }
 
 .status-line {
@@ -3221,7 +3344,7 @@ body.fight-route-active .app-content {
   }
 
   .fight-hud-shell {
-    --fight-hud-side-width: 54px;
+    --fight-hud-side-width: 60px;
     gap: 4px;
     padding: 6px 10px 0;
   }
@@ -3249,7 +3372,7 @@ body.fight-route-active .app-content {
   }
 
   .fight-hud-name {
-    font-size: 1.02rem;
+    font-size: 1.08rem;
   }
 
   .fight-hud-center {
@@ -3281,9 +3404,26 @@ body.fight-route-active .app-content {
     padding: 20px;
   }
 
-  .fight-loading-portrait {
+  .fight-loading-fighter-shell {
     width: min(42cqw, 320px);
-    max-height: min(54cqh, 420px);
+    min-height: min(54cqh, 420px);
+  }
+
+  .fight-loading-fighter-sprite {
+    height: min(var(--fight-loading-fighter-height, 470px), 54cqh, 420px);
+  }
+
+  .fight-arcade-result-panel {
+    width: min(620px, 100%);
+  }
+
+  .fight-arcade-result-faceoff {
+    width: min(100%, 440px);
+    gap: clamp(12px, 2.6cqw, 22px);
+  }
+
+  .fight-arcade-result-headshot-shell {
+    max-width: 170px;
   }
 
   .fight-controls-shell {
@@ -3421,7 +3561,7 @@ body.fight-route-active .app-content {
   }
 
   .fight-hud-shell {
-    --fight-hud-side-width: 50px;
+    --fight-hud-side-width: 56px;
     gap: 4px;
     padding: 6px 10px 0;
   }
@@ -3442,7 +3582,7 @@ body.fight-route-active .app-content {
   }
 
   .fight-hud-name {
-    font-size: 0.94rem;
+    font-size: 1rem;
   }
 
   .fight-hud-center {
@@ -3490,9 +3630,29 @@ body.fight-route-active .app-content {
     padding: 20px;
   }
 
-  .fight-loading-portrait {
+  .fight-loading-fighter-shell {
     width: min(42cqw, 320px);
-    max-height: min(54cqh, 420px);
+    min-height: min(54cqh, 420px);
+  }
+
+  .fight-loading-fighter-sprite {
+    height: min(var(--fight-loading-fighter-height, 470px), 54cqh, 420px);
+  }
+
+  .fight-arcade-result-panel {
+    width: min(560px, 100%);
+  }
+
+  .fight-arcade-result-faceoff {
+    width: min(100%, 400px);
+  }
+
+  .fight-arcade-result-headshot-shell {
+    max-width: 148px;
+  }
+
+  .fight-arcade-result-divider {
+    height: clamp(72px, 18cqh, 112px);
   }
 
   .fight-controls-shell {

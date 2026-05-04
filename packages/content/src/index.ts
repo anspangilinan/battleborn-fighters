@@ -1,11 +1,13 @@
 import type { CharacterDefinition } from "@battleborn/game-core";
 
-import { characterDefinitions } from "./characters";
+import { characterDefinitions, hiddenCharacterDefinitions } from "./characters";
 import { validateRoster } from "./schema";
 
-export { characterDefinitions, validateRoster };
+export { characterDefinitions, hiddenCharacterDefinitions, mcbalutAnomaly } from "./characters";
+export { validateRoster } from "./schema";
 
 export const fighterRoster = validateRoster(characterDefinitions);
+export const hiddenFighterRoster = validateRoster(hiddenCharacterDefinitions);
 export type FighterId = keyof typeof fighterRoster;
 
 export function getFighter(id: string): CharacterDefinition {

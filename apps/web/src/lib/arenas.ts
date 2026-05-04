@@ -1,75 +1,56 @@
 import type { ArenaAudienceDefinition } from '@/lib/audience';
 
-const underwayAudience = {
-  leftInsetPercent: 12,
-  rightInsetPercent: 12,
-  barrierTopPercent: 53,
-  barrierHeightPercent: 13,
-  barrierOpacity: 0.24,
-  barrierTint: 'rgba(21, 33, 45, 0.92)',
-  highlightTint: 'rgba(180, 226, 255, 0.12)',
-  hazeOpacity: 0.34,
-  hazeTint: 'rgba(112, 156, 186, 0.34)',
-  rows: [
-    {
-      yPercent: 57,
-      count: 4,
-      minScale: 0.6,
-      maxScale: 0.68,
-      minBlurPx: 3.4,
-      maxBlurPx: 4.6,
-      opacity: 0.2,
-      spreadPercent: 6,
-      verticalJitterPercent: 1.2,
-    },
-    {
-      yPercent: 60.5,
-      count: 5,
-      minScale: 0.68,
-      maxScale: 0.76,
-      minBlurPx: 2.4,
-      maxBlurPx: 3.4,
-      opacity: 0.3,
-      spreadPercent: 8,
-      verticalJitterPercent: 1.5,
-    },
-    {
-      yPercent: 64,
-      count: 6,
-      minScale: 0.76,
-      maxScale: 0.84,
-      minBlurPx: 1.4,
-      maxBlurPx: 2.4,
-      opacity: 0.4,
-      spreadPercent: 10,
-      verticalJitterPercent: 1.8,
-    },
-  ],
-} satisfies ArenaAudienceDefinition;
+interface ArenaConfig {
+  id: string;
+  label: string;
+  backgroundPath: string;
+  backgroundOffsetY: number;
+  combatOffsetY: number;
+  groundShadowOpacity: number;
+  audience: ArenaAudienceDefinition | null;
+}
 
 export const arenas = [
   {
     id: 'underway',
     label: 'Underway',
-    backgroundPath: '/arenas/underway.gif',
+    backgroundPath: '/arenas/underway.png',
     backgroundOffsetY: 0,
     combatOffsetY: 0,
     groundShadowOpacity: 0,
-    audience: underwayAudience,
+    audience: null,
   },
   {
     id: 'fort-sterling-bridge',
     label: 'Fort Sterling',
-    backgroundPath: '/arenas/fort-sterling-bridge.gif',
+    backgroundPath: '/arenas/fort-sterling.gif',
     backgroundOffsetY: 36,
     combatOffsetY: 52,
     groundShadowOpacity: 0.34,
     audience: null,
   },
-] as const;
+  {
+    id: 'mist',
+    label: 'The Mists',
+    backgroundPath: '/arenas/the-mists.png',
+    backgroundOffsetY: 0,
+    combatOffsetY: 0,
+    groundShadowOpacity: 0.22,
+    audience: null,
+  },
+  {
+    id: 'corrupted-dungeon',
+    label: 'Corrupted Dungeon',
+    backgroundPath: '/arenas/corrupted-dungeon.png',
+    backgroundOffsetY: 0,
+    combatOffsetY: 0,
+    groundShadowOpacity: 0.32,
+    audience: null,
+  },
+] as const satisfies readonly ArenaConfig[];
 
-export type ArenaDefinition = (typeof arenas)[number];
-export type ArenaId = ArenaDefinition['id'];
+export type ArenaId = (typeof arenas)[number]['id'];
+export type ArenaDefinition = ArenaConfig & { id: ArenaId };
 
 export const defaultArenaId: ArenaId = 'underway';
 

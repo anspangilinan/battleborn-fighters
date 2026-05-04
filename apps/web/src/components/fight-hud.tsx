@@ -2,22 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { fighterRoster } from "@battleborn/content";
 import {
   DEFAULT_CONFIG,
   MAX_OVERCHARGE_METER,
   OVERCHARGE_DURATION_FRAMES,
+  type CharacterDefinition,
   type MatchState,
 } from "@battleborn/game-core";
 
 import { FightDisplayName } from "@/components/fight-display-name";
 
 type FightHudProps = {
+  roster: Record<string, CharacterDefinition>;
   state: MatchState;
   headshots: Partial<Record<string, string | null>>;
 };
 
 type FightHudSlotProps = {
+  roster: Record<string, CharacterDefinition>;
   fighter: MatchState["fighters"][number];
   headshotSource?: string | null;
   side: "left" | "right";
@@ -43,8 +45,15 @@ function FightHudRounds({ wins, side }: FightHudRoundsProps) {
   );
 }
 
-function FightHudSlot({ fighter, headshotSource, side, comboCount, wins }: FightHudSlotProps) {
-  const maxHealth = fighterRoster[fighter.fighterId].stats.maxHealth;
+function FightHudSlot({
+  roster,
+  fighter,
+  headshotSource,
+  side,
+  comboCount,
+  wins,
+}: FightHudSlotProps) {
+  const maxHealth = roster[fighter.fighterId]?.stats.maxHealth ?? 1;
   const healthRatio = Math.max(0, Math.min(1, fighter.health / maxHealth));
   const recoverableHealthRatio = Math.max(
     healthRatio,
@@ -154,7 +163,7 @@ function FightHudSlot({ fighter, headshotSource, side, comboCount, wins }: Fight
   );
 }
 
-export function FightHud({ state, headshots }: FightHudProps) {
+export function FightHud({ roster, state, headshots }: FightHudProps) {
   const [leftFighter, rightFighter] = useMemo(
     () => [...state.fighters].sort((first, second) => first.slot - second.slot),
     [state.fighters],
@@ -170,6 +179,7 @@ export function FightHud({ state, headshots }: FightHudProps) {
   return (
     <div className="fight-hud-shell" aria-hidden="true">
       <FightHudSlot
+        roster={roster}
         fighter={leftFighter}
         headshotSource={headshots[leftFighter.fighterId]}
         side="left"
@@ -181,6 +191,7 @@ export function FightHud({ state, headshots }: FightHudProps) {
         <div className="fight-hud-round-label">Round {state.round}</div>
       </div>
       <FightHudSlot
+        roster={roster}
         fighter={rightFighter}
         headshotSource={headshots[rightFighter.fighterId]}
         side="right"

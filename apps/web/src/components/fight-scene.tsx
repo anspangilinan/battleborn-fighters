@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation';
 
 import { ArcadeMenuItem } from '@/components/arcade-menu-item';
+import { FightDisplayName } from '@/components/fight-display-name';
 import { FightHud } from '@/components/fight-hud';
 import {
   createAudienceCrowd,
@@ -11,8 +12,14 @@ import {
   type AudienceFanPlacement,
 } from '@/lib/audience';
 import { getArena, pickRandomArenaId } from '@/lib/arenas';
+import {
+  getFighterAnimationDirectories,
+  getFighterAnimationAssetRoots,
+  getFighterHeadshotCandidates,
+  getFighterPortraitCandidates,
+} from '@/lib/fighter-assets';
+import { isMenuBackKey, isMenuConfirmKey } from '@/lib/menu-input';
 
-import { fighterRoster, getFighter } from '@battleborn/content';
 import {
   DEFAULT_CONFIG,
   EMPTY_INPUT,
@@ -33,7 +40,6 @@ import {
   type MatchState,
 } from '@battleborn/game-core';
 
-const roster = fighterRoster;
 const matchServiceUrl =
   process.env.NEXT_PUBLIC_MATCH_SERVICE_URL ?? 'ws://localhost:8787';
 const defaultFighterRenderHeight = 168;
@@ -73,6 +79,14 @@ type FightAnnouncement = {
   phase: FightAnnouncementPhase;
   imageSrc: string | null;
 };
+type ArcadePostFightState = {
+  outcome: 'win' | 'lose';
+  primaryHref: string;
+  primaryLabel: string;
+  secondaryHref: string | null;
+  secondaryLabel: string | null;
+  autoAdvanceHref: string | null;
+};
 type AiDirectionKey = 'left' | 'right';
 type FightBotDashJumpSequence = {
   directionKey: AiDirectionKey;
@@ -111,6 +125,7 @@ type NormalizedFightBotProfile = {
 
 export interface FightSceneProps {
   mode: FightMode;
+  roster: Record<string, CharacterDefinition>;
   fighterId: string;
   opponentId: string;
   arenaId: string;
@@ -170,6 +185,22 @@ function buildArcadeFightHref(
   return `/fight?${params.toString()}`;
 }
 
+function buildArcadeRestartHref(
+  fighterId: string,
+  playerName?: string,
+) {
+  const params = new URLSearchParams({
+    mode: 'arcade',
+    fighter: fighterId,
+  });
+
+  if (playerName) {
+    params.set('name', playerName);
+  }
+
+  return `/fight?${params.toString()}`;
+}
+
 const fightAnimationStances = [
   'idle',
   'walk',
@@ -188,6 +219,7 @@ type FightAnimationStance = (typeof fightAnimationStances)[number];
 const KO_SLOWDOWN_DURATION_MS = 260;
 const KO_SLOWDOWN_TIME_SCALE = 1 / 3;
 const KO_ANNOUNCEMENT_DURATION_MS = 2000;
+const ARCADE_POST_FIGHT_AUTO_ADVANCE_MS = 2600;
 const PARAK_WIN_COMPANION_FIGHTER_ID = 'paraktaktak';
 const fightAnnouncementAssetRoot = '/fight/announcements';
 const fightAnnouncementImageSources = {
@@ -261,14 +293,6 @@ const zeroAttackCooldownDisplay: AttackCooldownDisplay = {
   remainingLabel: '',
   remainingRatio: 0,
 };
-
-function toAssetSegment(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 function preloadImage(src: string) {
   return new Promise<boolean>((resolve) => {
@@ -354,6 +378,16 @@ function getAudienceFrameSource(
     frames.length;
 
   return frames[frameIndex] ?? frames[0] ?? null;
+}
+
+function getLoadingFighterStyle(
+  fighter: CharacterDefinition,
+): CSSProperties {
+  const renderHeight = fighter.sprites.renderHeight ?? defaultFighterRenderHeight;
+
+  return {
+    '--fight-loading-fighter-height': `${Math.round(renderHeight * 2.8)}px`,
+  } as CSSProperties;
 }
 
 function getAudienceFanStyle(
@@ -488,15 +522,6 @@ async function loadSequentialFrameSet(assetBasePath: string) {
   return [];
 }
 
-function getFighterAssetRoots(fighter: CharacterDefinition) {
-  return Array.from(
-    new Set([
-      `/characters/${fighter.id}`,
-      `/characters/${toAssetSegment(fighter.name)}`,
-    ]),
-  );
-}
-
 function getUniqueFighters(fighters: CharacterDefinition[]) {
   return Array.from(
     new Map(fighters.map((fighter) => [fighter.id, fighter])).values(),
@@ -504,15 +529,10 @@ function getUniqueFighters(fighters: CharacterDefinition[]) {
 }
 
 async function discoverStanceFrames(
-  assetRoots: string[],
+  fighter: CharacterDefinition,
   stance: FightAnimationStance,
 ) {
-  const candidateDirectories = assetRoots.flatMap((root) => [
-    `${root}/animations/${stance}/`,
-    `${root}/${stance}/`,
-  ]);
-
-  for (const directory of candidateDirectories) {
+  for (const directory of getFighterAnimationDirectories(fighter, stance)) {
     const frames = await loadSequentialFrames(directory);
     if (frames.length > 0) {
       return frames;
@@ -565,25 +585,17 @@ async function discoverWinCompanionAssets(
 async function discoverFighterAssets(
   fighter: CharacterDefinition,
 ): Promise<FighterAssetManifest> {
-  const assetRoots = getFighterAssetRoots(fighter);
-  const portraitSource = await discoverImageSource([
-    fighter.sprites.portrait,
-    ...assetRoots.flatMap((root) => [
-      `${root}/portrait.png`,
-      `${root}/animations/portrait.png`,
-    ]),
-  ]);
-  const headshotSource = await discoverImageSource([
-    ...assetRoots.flatMap((root) => [
-      `${root}/headshot.png`,
-      `${root}/animations/headshot.png`,
-    ]),
-    portraitSource,
-  ]);
+  const assetRoots = getFighterAnimationAssetRoots(fighter);
+  const portraitSource = await discoverImageSource(
+    getFighterPortraitCandidates(fighter),
+  );
+  const headshotSource = await discoverImageSource(
+    getFighterHeadshotCandidates(fighter),
+  );
   const stanceEntries = await Promise.all(
     fightAnimationStances.map(
       async (stance) =>
-        [stance, await discoverStanceFrames(assetRoots, stance)] as const,
+        [stance, await discoverStanceFrames(fighter, stance)] as const,
     ),
   );
   const winCompanion = await discoverWinCompanionAssets(fighter, assetRoots);
@@ -1005,7 +1017,10 @@ function getSpecialAnimationFrameIndex(
   );
 }
 
-function getActiveSpecialCinematicState(state: MatchState | null) {
+function getActiveSpecialCinematicState(
+  state: MatchState | null,
+  roster: Record<string, CharacterDefinition>,
+) {
   if (!state || state.status !== 'fighting') {
     return null;
   }
@@ -2188,7 +2203,11 @@ function getAiMeleeThreat(
   return nearestThreat;
 }
 
-function createAiInput(state: MatchState, botState: FightBotState): InputState {
+function createAiInput(
+  state: MatchState,
+  botState: FightBotState,
+  roster: Record<string, CharacterDefinition>,
+): InputState {
   const player = state.fighters[1];
   const target = state.fighters[0];
   const playerDefinition = roster[player.fighterId];
@@ -2743,6 +2762,7 @@ function restoreTrainingInfiniteHealthState(
 
 function applyTrainingAssists(
   state: MatchState,
+  roster: Record<string, CharacterDefinition>,
   infiniteHealthEnabled: boolean,
   infiniteOverchargeEnabled: boolean,
 ) {
@@ -2789,6 +2809,7 @@ function applyTrainingAssists(
 
 export function FightScene(props: FightSceneProps) {
   const router = useRouter();
+  const roster = props.roster;
   const screenRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const arenaSceneRef = useRef<any>(null);
@@ -2827,15 +2848,33 @@ export function FightScene(props: FightSceneProps) {
   const hasReportedResult = useRef(false);
   const koAnnouncementTimeoutRef = useRef<number | null>(null);
   const arcadeAdvanceTimeoutRef = useRef<number | null>(null);
+  const arcadePostFightActionRef = useRef<{
+    visible: boolean;
+    primaryHref: string | null;
+    secondaryHref: string | null;
+  }>({
+    visible: false,
+    primaryHref: null,
+    secondaryHref: null,
+  });
+  const [isArcadePostFightVisible, setIsArcadePostFightVisible] = useState(false);
 
-  const opponentDefinition = useMemo(
-    () => getFighter(props.opponentId),
-    [props.opponentId],
-  );
-  const fighterDefinition = useMemo(
-    () => getFighter(props.fighterId),
-    [props.fighterId],
-  );
+  const opponentDefinition = useMemo(() => {
+    const fighter = roster[props.opponentId];
+    if (!fighter) {
+      throw new Error(`Unknown fighter ${props.opponentId}`);
+    }
+
+    return fighter;
+  }, [props.opponentId, roster]);
+  const fighterDefinition = useMemo(() => {
+    const fighter = roster[props.fighterId];
+    if (!fighter) {
+      throw new Error(`Unknown fighter ${props.fighterId}`);
+    }
+
+    return fighter;
+  }, [props.fighterId, roster]);
   const selectedArena = useMemo(
     () => getArena(props.arenaId),
     [props.arenaId],
@@ -2956,6 +2995,49 @@ export function FightScene(props: FightSceneProps) {
     props.mode,
     props.playerName,
   ]);
+  const arcadeRestartHref = useMemo(
+    () => buildArcadeRestartHref(props.fighterId, props.playerName),
+    [props.fighterId, props.playerName],
+  );
+  const arcadePostFightState = useMemo<ArcadePostFightState | null>(() => {
+    if (props.mode !== 'arcade' || !hudState || hudState.status !== 'match-over') {
+      return null;
+    }
+
+    const didPlayerWin = hudState.winner === playerSlot;
+
+    return {
+      outcome: didPlayerWin ? 'win' : 'lose',
+      primaryHref: didPlayerWin
+        ? nextArcadeHref ?? '/'
+        : arcadeRestartHref,
+      primaryLabel: didPlayerWin
+        ? nextArcadeHref
+          ? 'Continue'
+          : 'Return Home'
+        : 'Retry Arcade',
+      secondaryHref: didPlayerWin
+        ? nextArcadeHref
+          ? null
+          : arcadeRestartHref
+        : '/',
+      secondaryLabel: didPlayerWin
+        ? nextArcadeHref
+          ? null
+          : 'Run Again'
+        : 'Main Menu',
+      autoAdvanceHref: didPlayerWin ? nextArcadeHref : null,
+    };
+  }, [
+    arcadeRestartHref,
+    hudState?.status,
+    hudState?.winner,
+    nextArcadeHref,
+    playerSlot,
+    props.arcadeIndex,
+    props.arcadeOrder,
+    props.mode,
+  ]);
   const overchargeControlState = useMemo(() => {
     const overchargeMeter = controlledFighterRuntime?.overchargeMeter ?? 0;
     const overchargeActiveFrames =
@@ -2978,7 +3060,7 @@ export function FightScene(props: FightSceneProps) {
   }, [controlledFighterRuntime]);
 
   const activeSpecialCinematic = useMemo(() => {
-    const activeSpecial = getActiveSpecialCinematicState(hudState);
+    const activeSpecial = getActiveSpecialCinematicState(hudState, roster);
     if (!activeSpecial) {
       return null;
     }
@@ -3167,7 +3249,36 @@ export function FightScene(props: FightSceneProps) {
   }, [isSceneBooting, props.mode, trainingOpponentMode]);
 
   useEffect(() => {
-    if (props.mode !== 'arcade' || !hudState || hudState.status !== 'match-over') {
+    if (
+      props.mode !== 'arcade' ||
+      !arcadePostFightState ||
+      isSceneBooting ||
+      Boolean(koAnnouncement)
+    ) {
+      setIsArcadePostFightVisible(false);
+      return;
+    }
+
+    setIsArcadePostFightVisible(true);
+  }, [arcadePostFightState, isSceneBooting, koAnnouncement, props.mode]);
+
+  useEffect(() => {
+    arcadePostFightActionRef.current =
+      isArcadePostFightVisible && arcadePostFightState
+        ? {
+            visible: true,
+            primaryHref: arcadePostFightState.primaryHref,
+            secondaryHref: arcadePostFightState.secondaryHref,
+          }
+        : {
+            visible: false,
+            primaryHref: null,
+            secondaryHref: null,
+          };
+  }, [arcadePostFightState, isArcadePostFightVisible]);
+
+  useEffect(() => {
+    if (!isArcadePostFightVisible || !arcadePostFightState?.autoAdvanceHref) {
       if (arcadeAdvanceTimeoutRef.current !== null) {
         window.clearTimeout(arcadeAdvanceTimeoutRef.current);
         arcadeAdvanceTimeoutRef.current = null;
@@ -3175,13 +3286,10 @@ export function FightScene(props: FightSceneProps) {
       return;
     }
 
-    if (hudState.winner !== playerSlot || !nextArcadeHref) {
-      return;
-    }
-
+    const autoAdvanceHref = arcadePostFightState.autoAdvanceHref;
     arcadeAdvanceTimeoutRef.current = window.setTimeout(() => {
-      router.push(nextArcadeHref);
-    }, KO_ANNOUNCEMENT_DURATION_MS);
+      router.push(autoAdvanceHref);
+    }, ARCADE_POST_FIGHT_AUTO_ADVANCE_MS);
 
     return () => {
       if (arcadeAdvanceTimeoutRef.current !== null) {
@@ -3189,7 +3297,7 @@ export function FightScene(props: FightSceneProps) {
         arcadeAdvanceTimeoutRef.current = null;
       }
     };
-  }, [hudState, nextArcadeHref, playerSlot, props.mode, router]);
+  }, [arcadePostFightState, isArcadePostFightVisible, router]);
 
   useEffect(() => {
     const currentDocument = document as FullscreenCapableDocument;
@@ -3311,6 +3419,26 @@ export function FightScene(props: FightSceneProps) {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const arcadePostFightAction = arcadePostFightActionRef.current;
+      if (arcadePostFightAction.visible) {
+        if (isMenuConfirmKey(event) && arcadePostFightAction.primaryHref) {
+          event.preventDefault();
+          router.push(arcadePostFightAction.primaryHref);
+          return;
+        }
+
+        if (
+          (event.code === 'Escape' || isMenuBackKey(event)) &&
+          arcadePostFightAction.secondaryHref
+        ) {
+          event.preventDefault();
+          router.push(arcadePostFightAction.secondaryHref);
+          return;
+        }
+
+        return;
+      }
+
       if (event.code === 'Escape') {
         event.preventDefault();
         if (isPausedRef.current) {
@@ -3733,9 +3861,9 @@ export function FightScene(props: FightSceneProps) {
               const opponentInput =
                 props.mode === 'training'
                   ? trainingOpponentModeRef.current === 'bot'
-                    ? createAiInput(localState.current, fightBotStateRef.current)
+                    ? createAiInput(localState.current, fightBotStateRef.current, roster)
                     : EMPTY_INPUT
-                  : createAiInput(localState.current, fightBotStateRef.current);
+                  : createAiInput(localState.current, fightBotStateRef.current, roster);
               localState.current = stepMatch(
                 localState.current,
                 roster,
@@ -3746,6 +3874,7 @@ export function FightScene(props: FightSceneProps) {
               if (props.mode === 'training') {
                 applyTrainingAssists(
                   localState.current,
+                  roster,
                   trainingInfiniteHealthRef.current,
                   trainingInfiniteOverchargeRef.current,
                 );
@@ -3764,7 +3893,7 @@ export function FightScene(props: FightSceneProps) {
               didAdvanceSimulation &&
               (
                 localState.current.frame % 2 === 0 ||
-                getActiveSpecialCinematicState(localState.current)
+                getActiveSpecialCinematicState(localState.current, roster)
               )
             ) {
               setHudState(localState.current);
@@ -4133,6 +4262,7 @@ export function FightScene(props: FightSceneProps) {
     props.playerName,
     props.roomCode,
     props.token,
+    router,
   ]);
 
   useEffect(() => {
@@ -4175,10 +4305,42 @@ export function FightScene(props: FightSceneProps) {
     }),
     [fighterAssetManifests, fighterDefinition.id, opponentDefinition.id],
   );
+  const fighterLoadingPreviewSource = useMemo(
+    () =>
+      props.concealFighterOnLoading
+        ? null
+        : fighterAssetManifests[fighterDefinition.id]?.portraitSource ??
+          fighterDefinition.sprites.portrait,
+    [fighterAssetManifests, fighterDefinition, props.concealFighterOnLoading],
+  );
+  const opponentLoadingPreviewSource = useMemo(
+    () =>
+      props.concealOpponentOnLoading
+        ? null
+        : fighterAssetManifests[opponentDefinition.id]?.portraitSource ??
+          opponentDefinition.sprites.portrait,
+    [fighterAssetManifests, opponentDefinition, props.concealOpponentOnLoading],
+  );
+  const arcadePostFightFighterHeadshotSource = useMemo(
+    () =>
+      fighterAssetManifests[fighterDefinition.id]?.headshotSource ??
+      fighterAssetManifests[fighterDefinition.id]?.portraitSource ??
+      fighterDefinition.sprites.portrait,
+    [fighterAssetManifests, fighterDefinition],
+  );
+  const arcadePostFightOpponentHeadshotSource = useMemo(
+    () =>
+      fighterAssetManifests[opponentDefinition.id]?.headshotSource ??
+      fighterAssetManifests[opponentDefinition.id]?.portraitSource ??
+      opponentDefinition.sprites.portrait,
+    [fighterAssetManifests, opponentDefinition],
+  );
   const countdownAnnouncement = hudState
     ? getCountdownAnnouncement(hudState)
     : null;
-  const roundResultAnnouncement = !koAnnouncement
+  const roundResultAnnouncement =
+    !koAnnouncement &&
+    !(props.mode === 'arcade' && arcadePostFightState)
     ? getRoundResultAnnouncement(hudState, playerSlot)
     : null;
   const fightAnnouncement =
@@ -4330,15 +4492,29 @@ export function FightScene(props: FightSceneProps) {
                     </div>
                   </div>
                 ) : (
-                  <img
-                    src={fighterDefinition.sprites.portrait}
-                    alt={fighterDefinition.name}
-                    className="fight-loading-portrait fight-loading-portrait-player"
+                  <div
+                    className="fight-loading-fighter-shell"
+                    style={getLoadingFighterStyle(fighterDefinition)}
+                  >
+                    {fighterLoadingPreviewSource ? (
+                      <img
+                        src={fighterLoadingPreviewSource}
+                        alt={fighterDefinition.name}
+                        className="fight-loading-fighter-sprite fight-loading-fighter-sprite-player"
+                      />
+                    ) : null}
+                  </div>
+                )}
+                {props.concealFighterOnLoading ? (
+                  <div className="fight-loading-label fight-loading-label-plain">
+                    Random
+                  </div>
+                ) : (
+                  <FightDisplayName
+                    className="fight-loading-label"
+                    name={fighterDefinition.name}
                   />
                 )}
-                <div className="fight-loading-label">
-                  {props.concealFighterOnLoading ? 'Random' : fighterDefinition.name}
-                </div>
               </div>
               <div
                 className="fight-loading-versus-mark"
@@ -4358,15 +4534,29 @@ export function FightScene(props: FightSceneProps) {
                     </div>
                   </div>
                 ) : (
-                  <img
-                    src={opponentDefinition.sprites.portrait}
-                    alt={opponentDefinition.name}
-                    className="fight-loading-portrait fight-loading-portrait-opponent"
+                  <div
+                    className="fight-loading-fighter-shell"
+                    style={getLoadingFighterStyle(opponentDefinition)}
+                  >
+                    {opponentLoadingPreviewSource ? (
+                      <img
+                        src={opponentLoadingPreviewSource}
+                        alt={opponentDefinition.name}
+                        className="fight-loading-fighter-sprite fight-loading-fighter-sprite-opponent"
+                      />
+                    ) : null}
+                  </div>
+                )}
+                {props.concealOpponentOnLoading ? (
+                  <div className="fight-loading-label fight-loading-label-plain">
+                    Random
+                  </div>
+                ) : (
+                  <FightDisplayName
+                    className="fight-loading-label"
+                    name={opponentDefinition.name}
                   />
                 )}
-                <div className="fight-loading-label">
-                  {props.concealOpponentOnLoading ? 'Random' : opponentDefinition.name}
-                </div>
               </div>
             </div>
           </div>
@@ -4402,6 +4592,7 @@ export function FightScene(props: FightSceneProps) {
         ) : null}
         {!isSceneBooting && hudState ? (
           <FightHud
+            roster={roster}
             state={hudState}
             headshots={hudHeadshots}
           />
@@ -4494,6 +4685,58 @@ export function FightScene(props: FightSceneProps) {
               ) : (
                 fightAnnouncement.title
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {!isSceneBooting && isArcadePostFightVisible && arcadePostFightState ? (
+        <div
+          className={`fight-arcade-result-overlay fight-arcade-result-${arcadePostFightState.outcome}`}
+          aria-live="polite"
+        >
+          <div className="fight-arcade-result-panel">
+            <div className="fight-arcade-result-faceoff" aria-hidden="true">
+              <div className="fight-arcade-result-headshot-shell">
+                {arcadePostFightFighterHeadshotSource ? (
+                  <img
+                    src={arcadePostFightFighterHeadshotSource}
+                    alt=""
+                    className="fight-arcade-result-headshot"
+                  />
+                ) : null}
+              </div>
+              <div className="fight-arcade-result-divider" />
+              <div className="fight-arcade-result-headshot-shell fight-arcade-result-headshot-shell-opponent">
+                {arcadePostFightOpponentHeadshotSource ? (
+                  <img
+                    src={arcadePostFightOpponentHeadshotSource}
+                    alt=""
+                    className="fight-arcade-result-headshot"
+                  />
+                ) : null}
+              </div>
+            </div>
+            <div className="fight-arcade-result-actions">
+              <ArcadeMenuItem
+                cta
+                className="fight-arcade-result-action"
+                onClick={() => {
+                  router.push(arcadePostFightState.primaryHref);
+                }}
+              >
+                {arcadePostFightState.primaryLabel}
+              </ArcadeMenuItem>
+              {arcadePostFightState.secondaryHref &&
+              arcadePostFightState.secondaryLabel ? (
+                <ArcadeMenuItem
+                  className="fight-arcade-result-action"
+                  onClick={() => {
+                    router.push(arcadePostFightState.secondaryHref!);
+                  }}
+                >
+                  {arcadePostFightState.secondaryLabel}
+                </ArcadeMenuItem>
+              ) : null}
             </div>
           </div>
         </div>
