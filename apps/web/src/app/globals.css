@@ -694,6 +694,159 @@ body.fight-route-active .app-content {
   align-items: stretch;
 }
 
+.arcade-complete-page {
+  align-items: center;
+  justify-content: center;
+  padding: clamp(18px, 3cqw, 34px);
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 212, 108, 0.12), transparent 28%),
+    radial-gradient(circle at 82% 18%, rgba(61, 213, 255, 0.12), transparent 32%),
+    linear-gradient(180deg, #04070f 0%, #02050a 100%);
+}
+
+.arcade-clear-screen {
+  display: flex;
+  width: min(1120px, 100%);
+  max-width: 100%;
+  min-height: 0;
+}
+
+.arcade-clear-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1fr);
+  gap: clamp(18px, 3.4cqw, 44px);
+  align-items: center;
+  width: 100%;
+  padding: clamp(22px, 3.8cqw, 42px);
+  border: 1px solid rgba(114, 226, 255, 0.28);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top, rgba(255, 214, 85, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(9, 16, 28, 0.98), rgba(5, 9, 16, 0.98));
+  box-shadow:
+    0 30px 70px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.arcade-clear-portrait-shell {
+  display: grid;
+  place-items: end center;
+  min-height: min(58cqh, 560px);
+  padding: clamp(12px, 2.2cqw, 24px);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 48%),
+    linear-gradient(180deg, rgba(14, 22, 38, 0.98), rgba(7, 12, 21, 0.98));
+}
+
+.arcade-clear-portrait {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: min(60cqh, 620px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 22px 34px rgba(0, 0, 0, 0.42));
+}
+
+.arcade-clear-copy {
+  display: grid;
+  align-content: center;
+  gap: clamp(10px, 1.7cqh, 18px);
+}
+
+.arcade-clear-eyebrow {
+  color: #ffe08b;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(0.82rem, 1.35cqw, 0.98rem);
+  letter-spacing: 0.18em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.arcade-clear-title {
+  color: #fff3cb;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(2.3rem, 5.5cqw, 5rem);
+  letter-spacing: 0.08em;
+  line-height: 0.86;
+  text-transform: uppercase;
+  text-shadow:
+    -3px -3px 0 rgba(8, 12, 20, 0.94),
+    3px -3px 0 rgba(8, 12, 20, 0.94),
+    -3px 3px 0 rgba(8, 12, 20, 0.94),
+    3px 3px 0 rgba(8, 12, 20, 0.94);
+}
+
+.arcade-clear-name {
+  font-size: clamp(1.45rem, 3.2cqw, 2.8rem);
+  letter-spacing: 0.03em;
+  line-height: 0.94;
+}
+
+.arcade-clear-subtitle {
+  margin: 0;
+  color: rgba(243, 247, 255, 0.9);
+  font-size: clamp(0.98rem, 1.55cqw, 1.2rem);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.arcade-clear-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.arcade-clear-stat {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(164, 191, 228, 0.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(17, 27, 44, 0.88), rgba(8, 14, 24, 0.9));
+}
+
+.arcade-clear-stat-label {
+  color: rgba(214, 226, 244, 0.66);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.arcade-clear-stat-value {
+  color: #fff4c7;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1.3rem, 2.1cqw, 1.8rem);
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.arcade-clear-stat-value-muted {
+  color: #9bd9ff;
+}
+
+.arcade-clear-note {
+  margin: 0;
+  color: rgba(191, 204, 222, 0.78);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.arcade-clear-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.arcade-clear-action {
+  min-width: 172px;
+  justify-content: center;
+}
+
 .animation-lab-page {
   min-height: 100%;
   background: #07101a;
@@ -3290,6 +3443,30 @@ body.fight-route-active .app-content {
 }
 
 @container app-frame (max-width: 720px) {
+  .arcade-clear-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .arcade-clear-copy {
+    justify-items: center;
+  }
+
+  .arcade-clear-portrait-shell {
+    width: min(52cqw, 300px);
+    min-height: min(32cqh, 250px);
+  }
+
+  .arcade-clear-portrait {
+    max-height: min(34cqh, 280px);
+  }
+
+  .arcade-clear-stats {
+    grid-template-columns: 1fr;
+    width: min(100%, 420px);
+  }
+
   .landing-menu-logo {
     width: min(28cqw, 184px);
   }
@@ -3513,6 +3690,31 @@ body.fight-route-active .app-content {
 }
 
 @container app-frame (max-height: 460px) {
+  .arcade-clear-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    padding: 18px;
+  }
+
+  .arcade-clear-copy {
+    justify-items: center;
+    gap: 10px;
+  }
+
+  .arcade-clear-portrait-shell {
+    width: min(46cqw, 240px);
+    min-height: min(28cqh, 200px);
+  }
+
+  .arcade-clear-portrait {
+    max-height: min(26cqh, 210px);
+  }
+
+  .arcade-clear-stats {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
   .landing-menu-screen {
     gap: clamp(4px, 1cqh, 8px);
     padding: clamp(6px, 1.2cqh, 10px) clamp(10px, 2cqw, 18px) 0;

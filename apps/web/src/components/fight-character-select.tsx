@@ -306,6 +306,7 @@ function buildFightHref(
     if (arcadeOrder.length > 0 && !isRandomFighterSelection(fighterId)) {
       params.set("arcadeOrder", arcadeOrder.join(","));
       params.set("arcadeIndex", "0");
+      params.set("arcadeScore", "0");
       params.set("opponent", arcadeOrder[0] ?? fighterId);
     } else if (!isRandomFighterSelection(fighterId)) {
       params.set("opponent", fighterId);

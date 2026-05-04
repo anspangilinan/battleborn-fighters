@@ -1,6 +1,7 @@
 import { fighterRoster, hiddenFighterRoster } from "@battleborn/content";
 import type { CharacterDefinition } from "@battleborn/game-core";
 
+import { ArcadeRunCompleteScreen } from "@/components/arcade-run-complete";
 import { FightCharacterSelect } from "@/components/fight-character-select";
 import { FightScene } from "@/components/fight-scene";
 import { defaultArenaId, isArenaId, pickRandomArenaId } from "@/lib/arenas";
@@ -24,6 +25,15 @@ function pickRandomOpponent(
   roster: FighterRosterMap,
 ) {
   return pickRandomFighterId(fighterId, roster) || fighterId;
+}
+
+function parseNonNegativeInteger(value: string | string[] | undefined) {
+  if (typeof value !== "string") {
+    return 0;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isInteger(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
 }
 
 export default async function FightPage({ searchParams }: FightPageProps) {
@@ -114,6 +124,29 @@ export default async function FightPage({ searchParams }: FightPageProps) {
   const roomCode = typeof params.roomCode === "string" ? params.roomCode : undefined;
   const token = typeof params.token === "string" ? params.token : undefined;
   const playerName = typeof params.name === "string" ? params.name : undefined;
+  const arcadeResult = mode === "arcade" && params.arcadeResult === "clear"
+    ? "clear"
+    : null;
+  const arcadeScore = parseNonNegativeInteger(params.arcadeScore);
+  const arcadeStagesCleared = parseNonNegativeInteger(params.arcadeStagesCleared);
+
+  if (arcadeResult === "clear") {
+    const finalBossName =
+      arcadeRoster[arcadeFinalBossId]?.name ?? "mcbalut anomaly";
+
+    return (
+      <main className="fight-page arcade-complete-page">
+        <ArcadeRunCompleteScreen
+          fighter={playableRoster[fighterId] ?? fighterOptions[0]!}
+          finalBossName={finalBossName}
+          playerName={playerName}
+          totalScore={arcadeScore}
+          totalStages={arcadeStagesCleared || arcadeOrder.length}
+        />
+      </main>
+    );
+  }
+
   const shouldShowCharacterSelect =
     (mode === "arcade" && !explicitFighterSelection) ||
     (mode === "local" && (!explicitFighterSelection || !explicitArenaId)) ||
@@ -157,6 +190,7 @@ export default async function FightPage({ searchParams }: FightPageProps) {
         }
         arcadeOrder={mode === "arcade" ? arcadeOrder : undefined}
         arcadeIndex={mode === "arcade" ? arcadeIndex : undefined}
+        arcadeScore={mode === "arcade" ? arcadeScore : undefined}
         roomCode={roomCode}
         token={token}
         playerName={playerName}

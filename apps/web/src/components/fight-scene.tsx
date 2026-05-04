@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArcadeMenuItem } from '@/components/arcade-menu-item';
 import { FightDisplayName } from '@/components/fight-display-name';
 import { FightHud } from '@/components/fight-hud';
+import { arcadeFinalBossId } from '@/lib/arcade';
 import {
   createAudienceCrowd,
   type AudienceCharacterDefinition,
@@ -133,6 +134,7 @@ export interface FightSceneProps {
   concealOpponentOnLoading?: boolean;
   arcadeOrder?: string[];
   arcadeIndex?: number;
+  arcadeScore?: number;
   roomCode?: string;
   token?: string;
   playerName?: string;
@@ -163,6 +165,7 @@ function buildArcadeFightHref(
   fighterId: string,
   arcadeOrder: string[],
   arcadeIndex: number,
+  arcadeScore: number,
   currentArenaId?: string,
   playerName?: string,
 ) {
@@ -172,11 +175,35 @@ function buildArcadeFightHref(
     arena: pickRandomArenaId(currentArenaId),
     arcadeOrder: arcadeOrder.join(','),
     arcadeIndex: String(arcadeIndex),
+    arcadeScore: String(arcadeScore),
   });
   const opponentId = arcadeOrder[arcadeIndex];
   if (opponentId) {
     params.set('opponent', opponentId);
   }
+
+  if (playerName) {
+    params.set('name', playerName);
+  }
+
+  return `/fight?${params.toString()}`;
+}
+
+function buildArcadeClearHref(
+  fighterId: string,
+  arcadeOrder: string[],
+  arcadeScore: number,
+  arcadeStagesCleared: number,
+  playerName?: string,
+) {
+  const params = new URLSearchParams({
+    mode: 'arcade',
+    fighter: fighterId,
+    arcadeResult: 'clear',
+    arcadeOrder: arcadeOrder.join(','),
+    arcadeScore: String(arcadeScore),
+    arcadeStagesCleared: String(arcadeStagesCleared),
+  });
 
   if (playerName) {
     params.set('name', playerName);
@@ -199,6 +226,29 @@ function buildArcadeRestartHref(
   }
 
   return `/fight?${params.toString()}`;
+}
+
+function getArcadeStageScore(
+  state: MatchState,
+  playerSlot: 1 | 2,
+  roster: Record<string, CharacterDefinition>,
+  opponentId: string,
+) {
+  const fighter = state.fighters.find((entry) => entry.slot === playerSlot);
+  if (!fighter) {
+    return 0;
+  }
+
+  const definition = roster[fighter.fighterId];
+  const maxHealth = definition?.stats.maxHealth ?? 1;
+  const healthBonus = Math.round((Math.max(0, fighter.health) / maxHealth) * 600);
+  const timeBonus = Number.isFinite(state.timerFramesRemaining)
+    ? Math.max(0, Math.round(state.timerFramesRemaining / FPS) * 10)
+    : 0;
+  const roundBonus = Math.max(0, 4 - state.round) * 150;
+  const bossBonus = opponentId === arcadeFinalBossId ? 2000 : 0;
+
+  return 1000 + healthBonus + timeBonus + roundBonus + bossBonus;
 }
 
 const fightAnimationStances = [
@@ -2970,6 +3020,15 @@ export function FightScene(props: FightSceneProps) {
       ) as Record<AttackInputKey, AttackCooldownDisplay>,
     [controlledFighterDefinition, controlledFighterRuntime],
   );
+  const arcadeStageScore = useMemo(
+    () =>
+      props.mode === 'arcade' &&
+      hudState?.status === 'match-over' &&
+      hudState.winner === playerSlot
+        ? getArcadeStageScore(hudState, playerSlot, roster, props.opponentId)
+        : 0,
+    [hudState, playerSlot, props.mode, props.opponentId, roster],
+  );
   const nextArcadeHref = useMemo(() => {
     if (props.mode !== 'arcade' || !props.arcadeOrder?.length) {
       return null;
@@ -2984,10 +3043,13 @@ export function FightScene(props: FightSceneProps) {
       props.fighterId,
       props.arcadeOrder,
       nextArcadeIndex,
+      (props.arcadeScore ?? 0) + arcadeStageScore,
       props.arenaId,
       props.playerName,
     );
   }, [
+    arcadeStageScore,
+    props.arcadeScore,
     props.arcadeIndex,
     props.arcadeOrder,
     props.arenaId,
@@ -2999,22 +3061,44 @@ export function FightScene(props: FightSceneProps) {
     () => buildArcadeRestartHref(props.fighterId, props.playerName),
     [props.fighterId, props.playerName],
   );
+  const arcadeClearHref = useMemo(() => {
+    if (props.mode !== 'arcade' || !props.arcadeOrder?.length) {
+      return null;
+    }
+
+    return buildArcadeClearHref(
+      props.fighterId,
+      props.arcadeOrder,
+      (props.arcadeScore ?? 0) + arcadeStageScore,
+      Math.max(1, (props.arcadeIndex ?? 0) + 1),
+      props.playerName,
+    );
+  }, [
+    arcadeStageScore,
+    props.arcadeIndex,
+    props.arcadeOrder,
+    props.arcadeScore,
+    props.fighterId,
+    props.mode,
+    props.playerName,
+  ]);
   const arcadePostFightState = useMemo<ArcadePostFightState | null>(() => {
     if (props.mode !== 'arcade' || !hudState || hudState.status !== 'match-over') {
       return null;
     }
 
     const didPlayerWin = hudState.winner === playerSlot;
+    const victoryHref = nextArcadeHref ?? arcadeClearHref ?? '/';
 
     return {
       outcome: didPlayerWin ? 'win' : 'lose',
       primaryHref: didPlayerWin
-        ? nextArcadeHref ?? '/'
+        ? victoryHref
         : arcadeRestartHref,
       primaryLabel: didPlayerWin
         ? nextArcadeHref
           ? 'Continue'
-          : 'Return Home'
+          : 'View Results'
         : 'Retry Arcade',
       secondaryHref: didPlayerWin
         ? nextArcadeHref
@@ -3026,9 +3110,10 @@ export function FightScene(props: FightSceneProps) {
           ? null
           : 'Run Again'
         : 'Main Menu',
-      autoAdvanceHref: didPlayerWin ? nextArcadeHref : null,
+      autoAdvanceHref: didPlayerWin ? victoryHref : null,
     };
   }, [
+    arcadeClearHref,
     arcadeRestartHref,
     hudState?.status,
     hudState?.winner,
