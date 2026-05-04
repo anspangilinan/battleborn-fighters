@@ -14,7 +14,8 @@ export type SpriteAnimationStance =
   | "ko"
   | "win"
   | MoveAnimationStance
-  | "special-pose";
+  | "special-pose"
+  | "special-loop";
 export type JuggleState = "airborne" | "recovery";
 
 export interface InputState {
@@ -89,10 +90,14 @@ export interface ProjectileDefinition {
   tier: number;
   guardBypass?: boolean;
   spawnFrame?: number;
+  lifetimeFrames?: number;
+  persistsOnHit?: boolean;
+  hitIntervalFrames?: number;
   shotCount?: number;
   shotIntervalFrames?: number;
   spawnAnchor?: "attacker" | "opponent";
   spriteScale?: number;
+  animationFrameDurationFrames?: number;
   offsetX: number;
   offsetY: number;
   speed: number;
@@ -218,6 +223,11 @@ export interface ProjectileRuntimeState {
   tier: number;
   guardBypass?: boolean;
   spriteScale?: number;
+  lifetimeFrames?: number;
+  persistsOnHit?: boolean;
+  hitIntervalFrames?: number;
+  animationFrameDurationFrames?: number;
+  ageFrames: number;
   x: number;
   y: number;
   vx: number;

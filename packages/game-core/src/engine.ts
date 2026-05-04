@@ -1126,6 +1126,11 @@ function maybeSpawnProjectile(
     tier: projectile.tier,
     guardBypass: projectile.guardBypass,
     spriteScale: projectile.spriteScale,
+    lifetimeFrames: projectile.lifetimeFrames,
+    persistsOnHit: projectile.persistsOnHit,
+    hitIntervalFrames: projectile.hitIntervalFrames,
+    animationFrameDurationFrames: projectile.animationFrameDurationFrames,
+    ageFrames: 0,
     x: spawnX,
     y: spawnY,
     vx: velocityX,
@@ -1287,12 +1292,15 @@ export function getDashDurationFrames(definition: CharacterDefinition) {
 
 function updateProjectiles(state: MatchState, config: MatchConfig) {
   state.projectiles = state.projectiles.filter((projectile) => {
+    projectile.ageFrames += 1;
     projectile.vy += projectile.gravity;
     projectile.x += projectile.vx;
     projectile.y += projectile.vy;
 
     const worldHitbox = toWorldProjectileBox(projectile, projectile.hitbox);
     const travelDistance = Math.abs(projectile.x - projectile.originX);
+    const lifetimeExpired = projectile.lifetimeFrames != null &&
+      projectile.ageFrames >= projectile.lifetimeFrames;
     const reachedGround = worldHitbox.y + worldHitbox.height >= config.groundY;
     const reachedMaximumDistance = projectile.maximumDistance != null &&
       travelDistance >= projectile.maximumDistance;
@@ -1301,7 +1309,7 @@ function updateProjectiles(state: MatchState, config: MatchConfig) {
       worldHitbox.x > config.width ||
       worldHitbox.y > config.height;
 
-    return !reachedGround && !reachedMaximumDistance && !leftArena;
+    return !lifetimeExpired && !reachedGround && !reachedMaximumDistance && !leftArena;
   });
 }
 
@@ -1757,8 +1765,17 @@ function resolveProjectileHits(
     const projectileHitbox = toWorldProjectileBox(projectile, projectile.hitbox);
     const hurtboxes = getHurtboxes(defender, defenderDef);
     const collision = hurtboxes.some((hurtbox) => intersects(projectileHitbox, hurtbox));
+    const hitIntervalFrames = Math.max(1, projectile.hitIntervalFrames ?? 1);
+    const canInteractThisFrame =
+      !projectile.persistsOnHit ||
+      ((Math.max(0, projectile.ageFrames - 1)) % hitIntervalFrames === 0);
 
     if (!collision) {
+      survivingProjectiles.push(projectile);
+      continue;
+    }
+
+    if (!canInteractThisFrame) {
       survivingProjectiles.push(projectile);
       continue;
     }
@@ -1789,6 +1806,9 @@ function resolveProjectileHits(
       unlockFollowUpMove(attacker, move);
       if (move) {
         state.events.push(`${defender.name} blocked ${move.label}`);
+      }
+      if (projectile.persistsOnHit && defender.health > 0) {
+        survivingProjectiles.push(projectile);
       }
       continue;
     }
@@ -1826,6 +1846,9 @@ function resolveProjectileHits(
     unlockFollowUpMove(attacker, move);
     if (move) {
       state.events.push(`${attacker.name} landed ${move.label}`);
+    }
+    if (projectile.persistsOnHit && defender.health > 0) {
+      survivingProjectiles.push(projectile);
     }
   }
 
