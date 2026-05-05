@@ -39,6 +39,7 @@ export interface Box {
 export interface HitBox extends Box {
   damage: number;
   chipDamage?: number;
+  freezeFrames?: number;
   hitstun: number;
   knockbackX: number;
   launchY?: number;
@@ -48,6 +49,24 @@ export interface FrameBoxes {
   hitboxes?: HitBox[];
   hurtboxes?: Box[];
   pushboxes?: Box[];
+}
+
+export interface MoveRelocationDefinition {
+  startFrame: number;
+  endFrame: number;
+  distanceXRatio: number;
+}
+
+export type MoveHitboxAnchor = "fighter" | "attack-origin";
+
+export interface MoveEffectDefinition {
+  sprite: string;
+  startFrame: number;
+  offsetX: number;
+  offsetY: number;
+  anchor?: MoveHitboxAnchor;
+  spriteScale?: number;
+  playbackRate?: number;
 }
 
 export interface MoveDefinition {
@@ -66,6 +85,9 @@ export interface MoveDefinition {
   followUpMoveId?: string;
   specialSequence?: SpecialSequenceDefinition;
   projectile?: ProjectileDefinition;
+  relocation?: MoveRelocationDefinition;
+  hitboxAnchor?: MoveHitboxAnchor;
+  effectAnimation?: MoveEffectDefinition;
   frameBoxes?: Record<number, FrameBoxes>;
 }
 
@@ -89,6 +111,8 @@ export interface ProjectileDefinition {
   sprite: string;
   tier: number;
   guardBypass?: boolean;
+  rotateToVelocity?: boolean;
+  rotationOffsetRadians?: number;
   spawnFrame?: number;
   lifetimeFrames?: number;
   persistsOnHit?: boolean;
@@ -193,10 +217,16 @@ export interface FighterRuntimeState {
   recoverableHealth: number;
   attackId: string | null;
   attackFrame: number;
+  attackInputDirection: Facing;
+  attackStartFacing: Facing;
+  attackStartX: number;
   specialMovePhase: SpecialMovePhase | null;
   specialMovePhaseFrame: number;
   attackConnected: boolean;
   pendingFollowUpMoveId: string | null;
+  frozenFrames: number;
+  frozenAnimationActionFrames: number;
+  frozenAnimationMatchFrame: number;
   hitstun: number;
   juggleState: JuggleState | null;
   invulnerableFrames: number;
@@ -222,6 +252,8 @@ export interface ProjectileRuntimeState {
   sprite: string;
   tier: number;
   guardBypass?: boolean;
+  rotateToVelocity?: boolean;
+  rotationOffsetRadians?: number;
   spriteScale?: number;
   lifetimeFrames?: number;
   persistsOnHit?: boolean;

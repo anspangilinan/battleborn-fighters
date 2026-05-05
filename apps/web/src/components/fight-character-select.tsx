@@ -33,12 +33,11 @@ import {
   isMenuUpKey,
 } from "@/lib/menu-input";
 import {
-  getFighterAnimationDirectories,
-  getFighterHeadshotCandidates,
-  getFighterPortraitCandidates,
-} from "@/lib/fighter-assets";
+  getCachedHeadshotSource,
+  getCachedIdleFrames,
+  getCachedPortraitSource,
+} from "@/lib/fighter-visuals";
 
-const MAX_IDLE_FRAME_SCAN = 24;
 const IDLE_FRAME_MS = 120;
 const RANDOM_CYCLE_MS = 90;
 
@@ -68,74 +67,6 @@ type StageOptionCardProps = {
   selected: boolean;
 };
 
-function preloadImage(src: string) {
-  return new Promise<boolean>((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve(true);
-    image.onerror = () => resolve(false);
-    image.src = src;
-  });
-}
-
-async function discoverImageSource(candidates: Array<string | null | undefined>) {
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    if (await preloadImage(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-async function loadSequentialFrames(assetDirectory: string) {
-  const namingStrategies = [
-    (index: number) => `${String(index + 1).padStart(2, "0")}.png`,
-    (index: number) => `${index}.png`,
-    (index: number) => `${index + 1}.png`,
-  ];
-
-  for (const getFrameName of namingStrategies) {
-    const discoveredFrames: string[] = [];
-    for (let index = 0; index < MAX_IDLE_FRAME_SCAN; index += 1) {
-      const src = `${assetDirectory}${getFrameName(index)}`;
-      const exists = await preloadImage(src);
-      if (!exists) {
-        break;
-      }
-      discoveredFrames.push(src);
-    }
-
-    if (discoveredFrames.length > 0) {
-      return discoveredFrames;
-    }
-  }
-
-  return [];
-}
-
-async function discoverHeadshotSource(fighter: CharacterDefinition) {
-  return discoverImageSource(getFighterHeadshotCandidates(fighter));
-}
-
-async function discoverPortraitSource(fighter: CharacterDefinition) {
-  return discoverImageSource(getFighterPortraitCandidates(fighter));
-}
-
-async function discoverIdleFrames(fighter: CharacterDefinition) {
-  for (const directory of getFighterAnimationDirectories(fighter, "idle")) {
-    const frames = await loadSequentialFrames(directory);
-    if (frames.length > 0) {
-      return frames;
-    }
-  }
-
-  return [];
-}
-
 function useIdleAnimation(fighter: CharacterDefinition | undefined) {
   const [idleFrames, setIdleFrames] = useState<string[]>([]);
   const [portraitSource, setPortraitSource] = useState<string | null>(null);
@@ -156,8 +87,8 @@ function useIdleAnimation(fighter: CharacterDefinition | undefined) {
       setPortraitSource(null);
       setCurrentFrame(0);
       const [discoveredFrames, discoveredPortrait] = await Promise.all([
-        discoverIdleFrames(fighter),
-        discoverPortraitSource(fighter),
+        getCachedIdleFrames(fighter),
+        getCachedPortraitSource(fighter),
       ]);
 
       if (cancelled) {
@@ -450,7 +381,7 @@ export function FightCharacterSelect({
     async function loadHeadshots() {
       const headshotEntries = await Promise.all(
         Object.values(fighterLookup).map(
-          async (fighter) => [fighter.id, await discoverHeadshotSource(fighter)] as const,
+          async (fighter) => [fighter.id, await getCachedHeadshotSource(fighter)] as const,
         ),
       );
 

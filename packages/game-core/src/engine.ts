@@ -158,10 +158,16 @@ function createFighterState(
     recoverableHealth: 0,
     attackId: null,
     attackFrame: 0,
+    attackInputDirection: slot === 1 ? 1 : -1,
+    attackStartFacing: slot === 1 ? 1 : -1,
+    attackStartX: x,
     specialMovePhase: null,
     specialMovePhaseFrame: 0,
     attackConnected: false,
     pendingFollowUpMoveId: null,
+    frozenFrames: 0,
+    frozenAnimationActionFrames: 0,
+    frozenAnimationMatchFrame: 0,
     hitstun: 0,
     juggleState: null,
     invulnerableFrames: 0,
@@ -422,6 +428,24 @@ function gainOverchargeMeter(
   fighter.overchargeMeter = Math.min(MAX_OVERCHARGE_METER, fighter.overchargeMeter + amount);
 }
 
+function applyFrozenStatus(
+  defender: FighterRuntimeState,
+  freezeFrames: number | undefined,
+  matchFrame: number,
+) {
+  if (!freezeFrames || freezeFrames <= 0 || defender.health <= 0) {
+    return;
+  }
+
+  if (defender.frozenFrames <= 0) {
+    defender.frozenAnimationActionFrames = defender.actionFrames;
+    defender.frozenAnimationMatchFrame = matchFrame;
+  }
+
+  defender.frozenFrames = Math.max(defender.frozenFrames, freezeFrames);
+  defender.hitstun = Math.max(defender.hitstun, freezeFrames);
+}
+
 function getDamageAmount(
   hitbox: HitBox,
   attacker: FighterRuntimeState,
@@ -475,12 +499,18 @@ function finalizeFighterFrame(
   matchStatus: MatchState["status"],
 ) {
   if (fighter.health <= 0) {
+    fighter.frozenFrames = 0;
+    fighter.frozenAnimationActionFrames = 0;
+    fighter.frozenAnimationMatchFrame = 0;
     fighter.recoverableHealth = 0;
     clearOverchargeState(fighter);
     return;
   }
 
   if (matchStatus !== "fighting") {
+    fighter.frozenFrames = 0;
+    fighter.frozenAnimationActionFrames = 0;
+    fighter.frozenAnimationMatchFrame = 0;
     fighter.recoverableRegenAccumulator = 0;
     clearOverchargeState(fighter);
     return;
@@ -539,6 +569,9 @@ function registerComboHit(
 function clearAttackState(fighter: FighterRuntimeState) {
   fighter.attackId = null;
   fighter.attackFrame = 0;
+  fighter.attackInputDirection = fighter.facing;
+  fighter.attackStartFacing = fighter.facing;
+  fighter.attackStartX = fighter.x;
   fighter.specialMovePhase = null;
   fighter.specialMovePhaseFrame = 0;
   fighter.attackConnected = false;
@@ -580,6 +613,21 @@ function getDefaultMoveForButton(
   return definition.moves.punch;
 }
 
+function getAttackInputDirection(
+  fighter: FighterRuntimeState,
+  input: InputState,
+): Facing {
+  if (input.left && !input.right) {
+    return -1;
+  }
+
+  if (input.right && !input.left) {
+    return 1;
+  }
+
+  return fighter.facing;
+}
+
 function shouldEnterJuggle(
   defender: FighterRuntimeState,
   launchY: number,
@@ -618,6 +666,9 @@ function activateOvercharge(
   interruptAttack(fighter);
   cancelDash(fighter);
   clearComboState(fighter);
+  fighter.frozenFrames = 0;
+  fighter.frozenAnimationActionFrames = 0;
+  fighter.frozenAnimationMatchFrame = 0;
   fighter.hitstun = 0;
   fighter.invulnerableFrames = 0;
   fighter.juggleState = null;
@@ -683,6 +734,10 @@ function updateFighter(
 
   if (frozenBySpecialCinematic) {
     return;
+  }
+
+  if (fighter.frozenFrames > 0) {
+    fighter.frozenFrames = Math.max(0, fighter.frozenFrames - 1);
   }
 
   const activeMove = fighter.attackId ? definition.moves[fighter.attackId] : null;
@@ -754,6 +809,10 @@ function updateFighter(
   fighter.x += fighter.vx;
   fighter.y += fighter.vy;
 
+  if (fighter.attackId && activeMove) {
+    applyMoveRelocation(fighter, activeMove, config);
+  }
+
   if (fighter.y >= config.groundY) {
     const landedThisFrame = !fighter.grounded;
     fighter.y = config.groundY;
@@ -812,6 +871,9 @@ function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDef
   fighter.pendingFollowUpMoveId = null;
   fighter.attackId = move.id;
   fighter.attackFrame = 0;
+  fighter.attackInputDirection = getAttackInputDirection(fighter, input);
+  fighter.attackStartFacing = fighter.facing;
+  fighter.attackStartX = fighter.x;
   setSpecialMovePhase(fighter, move.specialSequence ? "build-up" : null);
   fighter.attackConnected = false;
   fighter.moveCooldownFrames[move.id] = getMoveCooldownFrames(move);
@@ -930,6 +992,33 @@ function updateSpecialChannelMovement(
 function finishAttack(fighter: FighterRuntimeState) {
   clearAttackState(fighter);
   fighter.action = Math.abs(fighter.vx) > 0.1 ? "walk" : "idle";
+}
+
+function applyMoveRelocation(
+  fighter: FighterRuntimeState,
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+  config: MatchConfig,
+) {
+  const relocation = move.relocation;
+  if (!relocation) {
+    return;
+  }
+
+  if (
+    fighter.attackFrame < relocation.startFrame ||
+    fighter.attackFrame > relocation.endFrame
+  ) {
+    return;
+  }
+
+  const relocationFrameCount = relocation.endFrame - relocation.startFrame + 1;
+  const completedFrames = fighter.attackFrame - relocation.startFrame + 1;
+  const progress = Math.min(1, completedFrames / relocationFrameCount);
+  const targetX = fighter.attackStartX +
+    fighter.attackInputDirection * relocation.distanceXRatio * config.width;
+  const clampedTargetX = Math.max(40, Math.min(config.width - 40, targetX));
+
+  fighter.x = fighter.attackStartX + (clampedTargetX - fighter.attackStartX) * progress;
 }
 
 function advanceAttack(
@@ -1125,6 +1214,8 @@ function maybeSpawnProjectile(
     sprite: projectile.sprite,
     tier: projectile.tier,
     guardBypass: projectile.guardBypass,
+    rotateToVelocity: projectile.rotateToVelocity,
+    rotationOffsetRadians: projectile.rotationOffsetRadians,
     spriteScale: projectile.spriteScale,
     lifetimeFrames: projectile.lifetimeFrames,
     persistsOnHit: projectile.persistsOnHit,
@@ -1449,8 +1540,9 @@ function hasNearbyMeleeBlockThreat(
 
   const hurtboxes = getHurtboxes(defender, defenderDef);
   for (const hitbox of getMoveFrameHitboxes(move, attacker.attackFrame)) {
-    const worldHitbox = toWorldBox(
+    const worldHitbox = toWorldAttackBox(
       attacker,
+      move,
       applyMeleeRangeToHitbox(move, hitbox),
     );
 
@@ -1573,10 +1665,12 @@ function resolveHits(
 
   const hitboxes = getMoveFrameHitboxes(move, attacker.attackFrame);
   const hurtboxes = getHurtboxes(defender, defenderDef);
+  const attackFacing = getAttackHitboxFacing(attacker, move);
 
   for (const hitbox of hitboxes) {
-    const worldHitbox = toWorldBox(
+    const worldHitbox = toWorldAttackBox(
       attacker,
+      move,
       applyMeleeRangeToHitbox(move, hitbox),
     );
     const collision = hurtboxes.some((hurtbox) => intersects(worldHitbox, hurtbox));
@@ -1584,7 +1678,7 @@ function resolveHits(
       continue;
     }
 
-    if (canBlockIncomingHit(defender, attacker.facing)) {
+    if (canBlockIncomingHit(defender, attackFacing)) {
       const interactionDamage = getDamageAmount(hitbox, attacker);
       const chipDamage = getChipDamage(hitbox, attacker);
       defender.health = Math.max(0, defender.health - chipDamage);
@@ -1622,9 +1716,10 @@ function resolveHits(
       getRecoverableDamage(damage, false),
     );
     defender.hitstun = hitbox.hitstun;
-    defender.vx = hitbox.knockbackX * attacker.facing;
+    defender.vx = hitbox.knockbackX * attackFacing;
     defender.vy = -(hitbox.launchY ?? 0);
     defender.grounded = defender.vy === 0;
+    applyFrozenStatus(defender, hitbox.freezeFrames, state.frame);
     if (defender.health <= 0) {
       defender.juggleState = null;
       defender.invulnerableFrames = 0;
@@ -1676,7 +1771,7 @@ function resolveAttackProjectileClashes(
   }
 
   const attackHitboxes = hitboxes.map((hitbox) =>
-    toWorldBox(attacker, applyMeleeRangeToHitbox(move, hitbox))
+    toWorldAttackBox(attacker, move, applyMeleeRangeToHitbox(move, hitbox))
   );
   const destroyedProjectileIds = new Set<number>();
 
@@ -1825,6 +1920,7 @@ function resolveProjectileHits(
     defender.vx = projectile.hitbox.knockbackX * projectile.facing;
     defender.vy = -(projectile.hitbox.launchY ?? 0);
     defender.grounded = defender.vy === 0;
+    applyFrozenStatus(defender, projectile.hitbox.freezeFrames, state.frame);
     if (defender.health <= 0) {
       defender.juggleState = null;
       defender.invulnerableFrames = 0;
@@ -1881,6 +1977,34 @@ function getMoveFrameHitboxes(
   attackFrame: number,
 ) {
   return move.frameBoxes?.[attackFrame]?.hitboxes ?? [];
+}
+
+function toWorldAttackBox(
+  fighter: FighterRuntimeState,
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+  box: Box,
+): Box {
+  const anchorX = move.hitboxAnchor === "attack-origin"
+    ? fighter.attackStartX
+    : fighter.x;
+  const anchorFacing = getAttackHitboxFacing(fighter, move);
+  const mirroredX = anchorFacing === 1 ? box.x : -(box.x + box.width);
+
+  return {
+    x: anchorX + mirroredX,
+    y: fighter.y + box.y,
+    width: box.width,
+    height: box.height,
+  };
+}
+
+function getAttackHitboxFacing(
+  fighter: FighterRuntimeState,
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+): Facing {
+  return move.hitboxAnchor === "attack-origin"
+    ? fighter.attackStartFacing
+    : fighter.facing;
 }
 
 function applyMeleeRangeToHitbox<T extends Box>(

@@ -9,6 +9,7 @@ const hitboxSchema = z.object({
   height: z.number().positive(),
   damage: z.number().int().positive(),
   chipDamage: z.number().int().nonnegative().optional(),
+  freezeFrames: z.number().int().positive().optional(),
   hitstun: z.number().int().nonnegative(),
   knockbackX: z.number(),
   launchY: z.number().optional(),
@@ -42,6 +43,28 @@ const projectileSchema = z.object({
   apexHeight: z.number().nonnegative(),
   landing: z.enum(["origin", "floor"]).optional(),
   hitbox: hitboxSchema,
+});
+
+const relocationSchema = z.object({
+  startFrame: z.number().int().positive(),
+  endFrame: z.number().int().positive(),
+  distanceXRatio: z.number().positive().max(1),
+}).refine(
+  (value) => value.endFrame >= value.startFrame,
+  {
+    message: "endFrame must be greater than or equal to startFrame",
+    path: ["endFrame"],
+  },
+);
+
+const effectAnimationSchema = z.object({
+  sprite: z.string(),
+  startFrame: z.number().int().positive(),
+  offsetX: z.number(),
+  offsetY: z.number(),
+  anchor: z.enum(["fighter", "attack-origin"]).optional(),
+  spriteScale: z.number().positive().optional(),
+  playbackRate: z.number().positive().optional(),
 });
 
 const botBehaviorSchema = z.object({
@@ -132,6 +155,9 @@ export const characterSchema = z.object({
       zoomScale: z.number().positive().optional(),
     }).optional(),
     projectile: projectileSchema.optional(),
+    relocation: relocationSchema.optional(),
+    hitboxAnchor: z.enum(["fighter", "attack-origin"]).optional(),
+    effectAnimation: effectAnimationSchema.optional(),
     frameBoxes: z.record(
       z.string(),
       z.object({

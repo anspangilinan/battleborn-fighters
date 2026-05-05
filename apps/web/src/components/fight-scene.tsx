@@ -14,11 +14,15 @@ import {
 } from '@/lib/audience';
 import { getArena, pickRandomArenaId } from '@/lib/arenas';
 import {
-  getFighterAnimationDirectories,
   getFighterAnimationAssetRoots,
-  getFighterHeadshotCandidates,
-  getFighterPortraitCandidates,
 } from '@/lib/fighter-assets';
+import {
+  discoverImageSource,
+  getCachedHeadshotSource,
+  getCachedPortraitSource,
+  getCachedStanceFrames,
+  loadSequentialFrameSet,
+} from '@/lib/fighter-visuals';
 import { isMenuBackKey, isMenuConfirmKey } from '@/lib/menu-input';
 
 import {
@@ -290,6 +294,7 @@ const WIN_COMPANION_WALK_SPEED = 4.1;
 const WIN_COMPANION_SCREEN_MARGIN = 44;
 const WIN_COMPANION_TARGET_OFFSET = 58;
 const LOOPING_WIN_COMPANION_FIGHTER_IDS = new Set(['mrsdoc']);
+const TRAVERSING_WIN_COMPANION_FIGHTER_IDS = new Set(['mcbalut-anomaly']);
 
 type FighterAssetManifest = {
   headshotSource: string | null;
@@ -348,31 +353,6 @@ const zeroAttackCooldownDisplay: AttackCooldownDisplay = {
   remainingLabel: '',
   remainingRatio: 0,
 };
-
-function preloadImage(src: string) {
-  return new Promise<boolean>((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve(true);
-    image.onerror = () => resolve(false);
-    image.src = src;
-  });
-}
-
-async function discoverImageSource(
-  candidates: Array<string | null | undefined>,
-) {
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    if (await preloadImage(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
 
 function getAudienceShellStyle(
   audience: NonNullable<ReturnType<typeof getArena>['audience']>,
@@ -523,7 +503,10 @@ function getUniqueProjectileSprites(fighters: CharacterDefinition[]) {
     new Set(
       fighters.flatMap((fighter) =>
         Object.values(fighter.moves).flatMap((move) =>
-          move.projectile ? [move.projectile.sprite] : [],
+          [
+            ...(move.projectile ? [move.projectile.sprite] : []),
+            ...(move.effectAnimation ? [move.effectAnimation.sprite] : []),
+          ],
         ),
       ),
     ),
@@ -568,54 +551,10 @@ function getCachedProjectileAssetManifest(sprite: string) {
   return nextPromise;
 }
 
-async function loadSequentialFrames(assetDirectory: string) {
-  return loadSequentialFrameSet(assetDirectory);
-}
-
-async function loadSequentialFrameSet(assetBasePath: string) {
-  const namingStrategies = [
-    (index: number) => `${String(index + 1).padStart(2, '0')}.png`,
-    (index: number) => `${index}.png`,
-    (index: number) => `${index + 1}.png`,
-  ];
-
-  for (const getFrameName of namingStrategies) {
-    const discoveredFrames: string[] = [];
-    for (let index = 0; index < 24; index += 1) {
-      const src = `${assetBasePath}${getFrameName(index)}`;
-      const exists = await preloadImage(src);
-      if (!exists) {
-        break;
-      }
-      discoveredFrames.push(src);
-    }
-
-    if (discoveredFrames.length > 0) {
-      return discoveredFrames;
-    }
-  }
-
-  return [];
-}
-
 function getUniqueFighters(fighters: CharacterDefinition[]) {
   return Array.from(
     new Map(fighters.map((fighter) => [fighter.id, fighter])).values(),
   );
-}
-
-async function discoverStanceFrames(
-  fighter: CharacterDefinition,
-  stance: FightAnimationStance,
-) {
-  for (const directory of getFighterAnimationDirectories(fighter, stance)) {
-    const frames = await loadSequentialFrames(directory);
-    if (frames.length > 0) {
-      return frames;
-    }
-  }
-
-  return [];
 }
 
 async function discoverPrefixedFrames(
@@ -662,16 +601,11 @@ async function discoverFighterAssets(
   fighter: CharacterDefinition,
 ): Promise<FighterAssetManifest> {
   const assetRoots = getFighterAnimationAssetRoots(fighter);
-  const portraitSource = await discoverImageSource(
-    getFighterPortraitCandidates(fighter),
-  );
-  const headshotSource = await discoverImageSource(
-    getFighterHeadshotCandidates(fighter),
-  );
+  const portraitSource = await getCachedPortraitSource(fighter);
+  const headshotSource = await getCachedHeadshotSource(fighter);
   const stanceEntries = await Promise.all(
     fightAnimationStances.map(
-      async (stance) =>
-        [stance, await discoverStanceFrames(fighter, stance)] as const,
+      async (stance) => [stance, await getCachedStanceFrames(fighter, stance)] as const,
     ),
   );
   const winCompanion = await discoverWinCompanionAssets(fighter, assetRoots);
@@ -987,6 +921,24 @@ function getLoopingAnimationFrameIndex(
   return Math.floor(actionFrames / Math.max(1, loopFrameDuration)) % frameCount;
 }
 
+function getFrozenAdjustedActionFrames(
+  fighter: MatchState['fighters'][number],
+  actionFrames: number,
+) {
+  return fighter.frozenFrames > 0
+    ? Math.max(0, fighter.frozenAnimationActionFrames)
+    : Math.max(0, actionFrames);
+}
+
+function getFrozenAdjustedMatchFrame(
+  fighter: MatchState['fighters'][number],
+  matchFrame: number,
+) {
+  return fighter.frozenFrames > 0
+    ? Math.max(0, fighter.frozenAnimationMatchFrame)
+    : Math.max(0, matchFrame);
+}
+
 function getSpecialBuildUpFrameIndex(
   fighter: MatchState['fighters'][number],
   move: CharacterDefinition['moves'][string],
@@ -1032,7 +984,7 @@ function getSpecialBuildUpFrameIndex(
 
   if (specialSequence.animationMode === 'loop') {
     return getLoopingAnimationFrameIndex(
-      fighter.actionFrames,
+      getFrozenAdjustedActionFrames(fighter, fighter.actionFrames),
       frameCount,
       specialSequence.loopFrameDuration ?? 4,
     );
@@ -1069,7 +1021,7 @@ function getSpecialAnimationFrameIndex(
 
   if (specialSequence.animationMode === 'loop') {
     return getLoopingAnimationFrameIndex(
-      fighter.actionFrames,
+      getFrozenAdjustedActionFrames(fighter, fighter.actionFrames),
       frameCount,
       specialSequence.loopFrameDuration ?? 4,
     );
@@ -1159,7 +1111,7 @@ function getSpecialLoopAnimationFrameIndex(
     : Math.max(0, fighter.actionFrames);
 
   return getLoopingAnimationFrameIndex(
-    loopFramesElapsed,
+    getFrozenAdjustedActionFrames(fighter, loopFramesElapsed),
     frameCount,
     loopFrameDuration,
   );
@@ -1246,13 +1198,18 @@ function getAnimationFrameIndex(
 
   switch (stance) {
     case 'walk': {
-      const walkFrame = Math.floor(matchFrame / 5) % frameCount;
+      const walkFrame =
+        Math.floor(getFrozenAdjustedMatchFrame(fighter, matchFrame) / 5) %
+        frameCount;
       return fighter.vx * fighter.facing < 0
         ? frameCount - 1 - walkFrame
         : walkFrame;
     }
     case 'block':
-      return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 5));
+      return Math.min(
+        frameCount - 1,
+        Math.floor(getFrozenAdjustedActionFrames(fighter, fighter.actionFrames) / 5),
+      );
     case 'jump':
       if (frameCount >= 5) {
         if (fighter.grounded) {
@@ -1278,7 +1235,7 @@ function getAnimationFrameIndex(
         return Math.min(4, frameCount - 1);
       }
 
-      return Math.floor(matchFrame / 5) % frameCount;
+      return Math.floor(getFrozenAdjustedMatchFrame(fighter, matchFrame) / 5) % frameCount;
     case 'dash': {
       const dashDurationFrames = getDashDurationFrames(definition);
       return Math.min(
@@ -1291,11 +1248,14 @@ function getAnimationFrameIndex(
       );
     }
     case 'hurt':
-      return Math.floor(matchFrame / 4) % frameCount;
+      return Math.floor(getFrozenAdjustedMatchFrame(fighter, matchFrame) / 4) % frameCount;
     case 'ko':
-      return Math.min(frameCount - 1, Math.floor(fighter.actionFrames / 16));
+      return Math.min(
+        frameCount - 1,
+        Math.floor(getFrozenAdjustedActionFrames(fighter, fighter.actionFrames) / 16),
+      );
     case 'win':
-      return Math.floor(fighter.actionFrames / 7) % frameCount;
+      return Math.floor(getFrozenAdjustedActionFrames(fighter, fighter.actionFrames) / 7) % frameCount;
     case 'special':
       return getSpecialAnimationFrameIndex(fighter, definition, frameCount);
     case 'special-loop':
@@ -1315,8 +1275,30 @@ function getAnimationFrameIndex(
     }
     case 'idle':
     default:
-      return Math.floor(matchFrame / 8) % frameCount;
+      return Math.floor(getFrozenAdjustedMatchFrame(fighter, matchFrame) / 8) % frameCount;
   }
+}
+
+function getMoveEffectFrameIndex(
+  fighter: MatchState['fighters'][number],
+  move: CharacterDefinition['moves'][string] | null | undefined,
+  frameCount: number,
+) {
+  const effectAnimation = move?.effectAnimation;
+  if (!effectAnimation || frameCount <= 0 || fighter.attackFrame < effectAnimation.startFrame) {
+    return null;
+  }
+
+  const playbackRate = effectAnimation.playbackRate ?? 1;
+  const frameIndex = Math.floor(
+    (fighter.attackFrame - effectAnimation.startFrame) * playbackRate,
+  );
+
+  if (frameIndex < 0 || frameIndex >= frameCount) {
+    return null;
+  }
+
+  return frameIndex;
 }
 
 function getAnimationTextureKey(
@@ -1351,6 +1333,42 @@ function getWinCompanionState(
   const { walkSources, finishSources } = manifest.winCompanion;
   if (walkSources.length === 0 && finishSources.length === 0) {
     return null;
+  }
+
+  if (
+    TRAVERSING_WIN_COMPANION_FIGHTER_IDS.has(fighter.fighterId) &&
+    walkSources.length > 0
+  ) {
+    const leftX = -WIN_COMPANION_SCREEN_MARGIN;
+    const rightX = DEFAULT_CONFIG.width + WIN_COMPANION_SCREEN_MARGIN;
+    const travelDistance = rightX - leftX;
+    const travelFrames = Math.max(
+      1,
+      Math.ceil(travelDistance / WIN_COMPANION_WALK_SPEED),
+    );
+    const cycleFrames = travelFrames * 2;
+    const cycleFrame = fighter.actionFrames % cycleFrames;
+    const movingRight = cycleFrame < travelFrames;
+    const travelFrame = movingRight
+      ? cycleFrame
+      : cycleFrame - travelFrames;
+    const travelProgress = travelFrame / travelFrames;
+
+    return {
+      textureKey: getWinCompanionTextureKey(
+        fighter.fighterId,
+        'walk',
+        Math.floor(
+          fighter.actionFrames / WIN_COMPANION_WALK_FRAME_DURATION,
+        ) % walkSources.length,
+      ),
+      x: movingRight
+        ? leftX + travelDistance * travelProgress
+        : rightX - travelDistance * travelProgress,
+      y: fighter.y + 6 + combatOffsetY,
+      flipX: !movingRight,
+      depth: 3.08,
+    };
   }
 
   const startSide = fighter.x >= DEFAULT_CONFIG.width / 2 ? 'left' : 'right';
@@ -1762,6 +1780,15 @@ function getProjectileSpriteScale(
     (projectile.hitbox.width * 1.8) / sourceImage.width,
     (projectile.hitbox.height * 3.2) / sourceImage.height,
   ) * scaleMultiplier;
+}
+
+function getProjectileRenderRotation(
+  projectile: MatchState['projectiles'][number],
+) {
+  const baseRotation = projectile.rotateToVelocity === false
+    ? 0
+    : Math.atan2(projectile.vy, projectile.vx);
+  return baseRotation + (projectile.rotationOffsetRadians ?? 0);
 }
 
 function getProjectileTrailScales(projectile: MatchState['projectiles'][number]) {
@@ -2774,7 +2801,7 @@ function renderProjectileFallback(
     return;
   }
 
-  const angle = Math.atan2(projectile.vy, projectile.vx);
+  const angle = getProjectileRenderRotation(projectile);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const baseX = projectile.x;
@@ -2919,6 +2946,9 @@ function restoreTrainingInfiniteHealthState(
   fighter.specialMovePhaseFrame = 0;
   fighter.attackConnected = false;
   fighter.pendingFollowUpMoveId = null;
+  fighter.frozenFrames = 0;
+  fighter.frozenAnimationActionFrames = 0;
+  fighter.frozenAnimationMatchFrame = 0;
   fighter.hitstun = 0;
   fighter.comboCount = 0;
   fighter.comboOwnerSlot = null;
@@ -3855,6 +3885,10 @@ export function FightScene(props: FightSceneProps) {
           1 | 2,
           InstanceType<typeof Phaser.GameObjects.Image>
         >();
+        private attackEffectSprites = new Map<
+          1 | 2,
+          InstanceType<typeof Phaser.GameObjects.Image>
+        >();
         private projectileSprites = new Map<
           number,
           InstanceType<typeof Phaser.GameObjects.Image>
@@ -3913,7 +3947,7 @@ export function FightScene(props: FightSceneProps) {
           const perpendicularX = -directionY;
           const perpendicularY = directionX;
           const spacing = Math.max(projectile.hitbox.width * 0.6, 14);
-          const rotation = Math.atan2(projectile.vy, projectile.vx);
+          const rotation = getProjectileRenderRotation(projectile);
           const timeSeconds = this.time.now / 1000;
           const nextTrailSprites = trailAlphas.map((alpha, index) => {
             const trailSprite =
@@ -4195,9 +4229,14 @@ export function FightScene(props: FightSceneProps) {
               definition,
               manifest,
             );
+            const activeMove = fighter.attackId
+              ? definition.moves[fighter.attackId]
+              : null;
             const existingSprite = this.fighterSprites.get(fighter.slot);
             const existingCompanionSprite =
               this.fighterCompanionSprites.get(fighter.slot);
+            const existingAttackEffectSprite =
+              this.attackEffectSprites.get(fighter.slot);
             const visibleThisFrame = isBlinkFrameVisible(fighter, state.frame);
 
             if (companionState) {
@@ -4232,6 +4271,7 @@ export function FightScene(props: FightSceneProps) {
 
             if (!visibleThisFrame) {
               existingSprite?.setVisible(false);
+              existingAttackEffectSprite?.setVisible(false);
               return;
             }
 
@@ -4259,6 +4299,7 @@ export function FightScene(props: FightSceneProps) {
               );
               if (!this.textures.exists(textureKey)) {
                 existingSprite?.setVisible(false);
+                existingAttackEffectSprite?.setVisible(false);
                 renderOverchargeAura(
                   this.overchargeBackGraphics,
                   fighter,
@@ -4322,7 +4363,10 @@ export function FightScene(props: FightSceneProps) {
               fighterSprite.setScale(
                 spriteScale * (1 + overchargePulse * 0.03) * activationPulse,
               );
-              if (fighter.overchargeActiveFrames > 0) {
+              if (fighter.frozenFrames > 0) {
+                fighterSprite.setTint(0x79c6ff);
+                fighterSprite.setAlpha(0.92);
+              } else if (fighter.overchargeActiveFrames > 0) {
                 fighterSprite.setTint(0xfff8dc);
                 fighterSprite.setAlpha(0.94 + overchargePulse * 0.06);
               } else {
@@ -4376,6 +4420,63 @@ export function FightScene(props: FightSceneProps) {
                 'front',
                 selectedArena.combatOffsetY,
               );
+            }
+
+            const effectAnimation = activeMove?.effectAnimation;
+            const effectFrameSources = effectAnimation
+              ? projectileAssetSourcesRef.current[effectAnimation.sprite] ?? []
+              : [];
+            const effectFrameIndex = getMoveEffectFrameIndex(
+              fighter,
+              activeMove,
+              effectFrameSources.length,
+            );
+
+            if (effectAnimation && effectFrameIndex != null) {
+              const effectTextureKey = getProjectileTextureKey(
+                effectAnimation.sprite,
+                effectFrameIndex,
+              );
+
+              if (!this.textures.exists(effectTextureKey)) {
+                existingAttackEffectSprite?.setVisible(false);
+              } else {
+                const effectFacing = effectAnimation.anchor === 'attack-origin'
+                  ? fighter.attackStartFacing
+                  : fighter.facing;
+                const effectAnchorX = effectAnimation.anchor === 'attack-origin'
+                  ? fighter.attackStartX
+                  : fighter.x;
+                const effectOffsetX = effectFacing === 1
+                  ? effectAnimation.offsetX
+                  : -effectAnimation.offsetX;
+                const attackEffectSprite =
+                  existingAttackEffectSprite ??
+                  this.add.image(
+                    effectAnchorX + effectOffsetX,
+                    fighter.y +
+                      effectAnimation.offsetY +
+                      selectedArena.combatOffsetY,
+                    effectTextureKey,
+                  );
+
+                attackEffectSprite.setTexture(effectTextureKey);
+                attackEffectSprite.setVisible(true);
+                attackEffectSprite.setDepth(3.7);
+                attackEffectSprite.setOrigin(0.5, 0.5);
+                attackEffectSprite.setPosition(
+                  effectAnchorX + effectOffsetX,
+                  fighter.y +
+                    effectAnimation.offsetY +
+                    selectedArena.combatOffsetY,
+                );
+                attackEffectSprite.setFlipX(effectFacing < 0);
+                attackEffectSprite.setScale(effectAnimation.spriteScale ?? 1);
+                attackEffectSprite.setAlpha(1);
+                this.attackEffectSprites.set(fighter.slot, attackEffectSprite);
+              }
+            } else {
+              existingAttackEffectSprite?.setVisible(false);
             }
           });
 
@@ -4438,7 +4539,7 @@ export function FightScene(props: FightSceneProps) {
               projectile.y + selectedArena.combatOffsetY,
             );
             projectileSprite.setRotation(
-              Math.atan2(projectile.vy, projectile.vx),
+              getProjectileRenderRotation(projectile),
             );
             projectileSprite.setScale(spriteScale);
             projectileSprite.setAlpha(1);

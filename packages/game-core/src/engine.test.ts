@@ -289,6 +289,22 @@ const opponentAnchoredProjectileFighter: CharacterDefinition = {
   },
 };
 
+const uprightOpponentAnchoredProjectileFighter: CharacterDefinition = {
+  ...opponentAnchoredProjectileFighter,
+  id: "upright-opponent-anchored-projectile-fighter",
+  name: "Upright Opponent Anchored Projectile Fighter",
+  moves: {
+    ...opponentAnchoredProjectileFighter.moves,
+    punch: {
+      ...opponentAnchoredProjectileFighter.moves.punch,
+      projectile: {
+        ...opponentAnchoredProjectileFighter.moves.punch.projectile!,
+        rotationOffsetRadians: -Math.PI,
+      },
+    },
+  },
+};
+
 const cinematicSpecialFighter: CharacterDefinition = {
   ...fighter,
   id: "cinematic-special-fighter",
@@ -457,6 +473,54 @@ const extendedRangeFighter: CharacterDefinition = {
     punch: {
       ...fighter.moves.punch,
       meleeRange: 52,
+    },
+  },
+};
+
+const relocatingKickFighter: CharacterDefinition = {
+  ...fighter,
+  id: "relocating-kick-fighter",
+  name: "Relocating Kick Fighter",
+  moves: {
+    ...fighter.moves,
+    kick: {
+      ...fighter.moves.kick,
+      startup: 3,
+      active: 1,
+      recovery: 16,
+      relocation: {
+        startFrame: 3,
+        endFrame: 4,
+        distanceXRatio: 0.5,
+      },
+      hitboxAnchor: "attack-origin",
+      frameBoxes: {
+        3: {
+          hitboxes: [{ x: 12, y: -60, width: 26, height: 16, damage: 70, hitstun: 10, knockbackX: 7 }],
+        },
+      },
+    },
+  },
+};
+
+const freezingRelocatingKickFighter: CharacterDefinition = {
+  ...relocatingKickFighter,
+  id: "freezing-relocating-kick-fighter",
+  name: "Freezing Relocating Kick Fighter",
+  moves: {
+    ...relocatingKickFighter.moves,
+    kick: {
+      ...relocatingKickFighter.moves.kick,
+      frameBoxes: {
+        3: {
+          hitboxes: [
+            {
+              ...relocatingKickFighter.moves.kick.frameBoxes![3].hitboxes![0],
+              freezeFrames: 16,
+            },
+          ],
+        },
+      },
     },
   },
 };
@@ -791,6 +855,134 @@ test("configured melee range keeps point-blank melee hits active", () => {
 
   assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 50);
   assert.ok(state.events.some((entry) => entry.includes("landed Punch")));
+});
+
+test("relocation attacks default to moving forward and finish on frame four", () => {
+  const dummy = createOffPathDummy("relocation-forward-dummy");
+  const roster = {
+    [relocatingKickFighter.id]: relocatingKickFighter,
+    [dummy.id]: dummy,
+  };
+  let state = createMatchState(roster, relocatingKickFighter.id, dummy.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 900;
+
+  state = stepMatch(state, roster, input({ kick: true }), EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackFrame, 0);
+  assert.equal(state.fighters[0].x, 240);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackFrame, 2);
+  assert.equal(state.fighters[0].x, 240);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackFrame, 3);
+  assert.equal(state.fighters[0].x, 480);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackFrame, 4);
+  assert.equal(state.fighters[0].x, 720);
+});
+
+test("relocation attacks use the held horizontal input captured on kick press", () => {
+  const dummy = createOffPathDummy("relocation-backward-dummy");
+  const roster = {
+    [relocatingKickFighter.id]: relocatingKickFighter,
+    [dummy.id]: dummy,
+  };
+  let state = createMatchState(roster, relocatingKickFighter.id, dummy.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 200;
+  state.fighters[1].x = 900;
+
+  state = stepMatch(state, roster, input({ kick: true, left: true }), EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackInputDirection, -1);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackFrame, 3);
+  assert.equal(state.fighters[0].x, 120);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.fighters[0].attackFrame, 4);
+  assert.equal(state.fighters[0].x, 40);
+});
+
+test("origin-anchored relocation hits damage at the departure point", () => {
+  const roster = {
+    [relocatingKickFighter.id]: relocatingKickFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, relocatingKickFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 270;
+
+  state = stepMatch(state, roster, input({ kick: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[0].attackFrame, 3);
+  assert.equal(state.fighters[0].x, 480);
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 70);
+  assert.equal(state.fighters[1].hitstun, 10);
+});
+
+test("origin-anchored relocation hits do not damage at the destination", () => {
+  const roster = {
+    [relocatingKickFighter.id]: relocatingKickFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, relocatingKickFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 520;
+
+  state = stepMatch(state, roster, input({ kick: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[0].attackFrame, 3);
+  assert.equal(state.fighters[0].x, 480);
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth);
+});
+
+test("freeze hitboxes apply a frozen state that lasts through the authored freeze window", () => {
+  const roster = {
+    [freezingRelocatingKickFighter.id]: freezingRelocatingKickFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, freezingRelocatingKickFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 240;
+  state.fighters[1].x = 270;
+
+  state = stepMatch(state, roster, input({ kick: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 70);
+  assert.equal(state.fighters[1].hitstun, 16);
+  assert.equal(state.fighters[1].frozenFrames, 16);
+  assert.equal(state.fighters[1].action, "hit");
+
+  for (let index = 0; index < 16; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.fighters[1].hitstun, 0);
+  assert.equal(state.fighters[1].frozenFrames, 0);
 });
 
 test("move cooldowns block attacks until the configured frames expire", () => {
@@ -1427,6 +1619,39 @@ test("opponent-anchored projectiles can drop straight down onto the defender", (
 
   assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 80);
   assert.ok(state.events.some((entry) => entry.includes("landed Meteor Drop")));
+});
+
+test("opponent-anchored projectiles can carry their authored orientation offset", () => {
+  const roster = {
+    [uprightOpponentAnchoredProjectileFighter.id]: uprightOpponentAnchoredProjectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(
+    roster,
+    uprightOpponentAnchoredProjectileFighter.id,
+    fighter.id,
+  );
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 180;
+  state.fighters[1].x = 920;
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ punch: true }),
+    EMPTY_INPUT,
+  );
+
+  for (let index = 0; index < 8 && state.projectiles.length === 0; index += 1) {
+    state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  }
+
+  assert.equal(state.projectiles.length, 1);
+  assert.equal(state.projectiles[0].rotationOffsetRadians, -Math.PI);
+  assert.ok(Math.abs(state.projectiles[0].x - state.fighters[1].x) < 0.001);
+  assert.ok(Math.abs(state.projectiles[0].vx) < 0.001);
+  assert.ok(state.projectiles[0].vy > 0);
 });
 
 test("guarding a projectile applies default chip damage only", () => {
