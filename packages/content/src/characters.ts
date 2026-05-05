@@ -13,7 +13,7 @@ const morana: CharacterDefinition = {
     shadow: '#0d2f44',
   },
   sprites: {
-    portrait: '/characters/morana/portrait.png',
+    portrait: '/characters/morana/profile.png',
     renderHeight: 120,
   },
   bot: {
@@ -185,7 +185,7 @@ const mcbalut: CharacterDefinition = {
     shadow: '#1d3b28',
   },
   sprites: {
-    portrait: '/characters/mcbalut/portrait.png',
+    portrait: '/characters/mcbalut/profile.png',
     renderHeight: 110,
   },
   bot: {
@@ -508,7 +508,7 @@ const digv: CharacterDefinition = {
     shadow: '#1d2550',
   },
   sprites: {
-    portrait: '/characters/digv/portrait.png',
+    portrait: '/characters/digv/profile.png',
     renderHeight: 100,
   },
   bot: {
@@ -661,7 +661,7 @@ const paraktaktak: CharacterDefinition = {
     shadow: '#403117',
   },
   sprites: {
-    portrait: '/characters/paraktaktak/portrait.png',
+    portrait: '/characters/paraktaktak/profile.png',
     renderHeight: 127,
     stanceAliases: {
       special: ['attack2'],
@@ -1248,7 +1248,7 @@ const leechingshjt: CharacterDefinition = {
     shadow: '#140f1d',
   },
   sprites: {
-    portrait: '/characters/LeechingShjt/Animations/profile.png',
+    portrait: '/characters/LeechingShjt/profile.png',
     renderHeight: 117,
     assetRoot: 'LeechingShjt',
   },
