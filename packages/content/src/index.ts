@@ -6,7 +6,19 @@ import { validateRoster } from "./schema";
 export { characterDefinitions, hiddenCharacterDefinitions, mcbalutAnomaly } from "./characters";
 export { validateRoster } from "./schema";
 
-export const fighterRoster = validateRoster(characterDefinitions);
+function isEnabled(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+// McBalut is a dev/test fighter; hide unless explicitly enabled.
+const exposeMcBalut = isEnabled(process.env.MASTER_MODE) || isEnabled(process.env.MASTEER_MODE);
+export const fighterRoster = validateRoster(
+  characterDefinitions.filter((fighter) => fighter.id !== "mcbalut" || exposeMcBalut),
+);
 export const hiddenFighterRoster = validateRoster(hiddenCharacterDefinitions);
 export type FighterId = keyof typeof fighterRoster;
 
