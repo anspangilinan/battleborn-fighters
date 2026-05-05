@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { fighterRoster } from "@battleborn/content";
-import {
-  getFighterAnimationDirectories,
-  getFighterPortraitCandidates,
-} from "@/lib/fighter-assets";
 
 import { ArcadeMenuItem } from "@/components/arcade-menu-item";
 import { MenuControlsHint } from "@/components/menu-controls";
+import {
+  getCachedHeadshotSource,
+  getCachedIdleFrames,
+  getCachedPortraitSource,
+} from "@/lib/fighter-visuals";
 import {
   getWrappedIndex,
   isMenuBackKey,
@@ -20,15 +21,31 @@ import {
 } from "@/lib/menu-input";
 
 const fighters = Object.values(fighterRoster);
-const MAX_IDLE_FRAME_SCAN = 24;
 const MENU_IDLE_FRAME_MS = 120;
+const TITLE_ROSTER_SLOT_SPREAD = 96;
+const TITLE_ROSTER_JITTER_X = 0.6;
+const TITLE_ROSTER_JITTER_Y = 0.8;
+const TITLE_ROSTER_BASE_TOP_PERCENT = -1.5;
+const TITLE_ROSTER_DEPTH_RANGE = 0;
 
 type HomeScreenStage = "title" | "menu";
+type HomeScreenFighter = (typeof fighters)[number];
 
 type MenuCharacterDisplayProps = {
-  fighter: (typeof fighters)[number] | undefined;
+  fighter: HomeScreenFighter | undefined;
   side: "left" | "right";
 };
+
+type TitleRosterPhotoSpriteProps = {
+  facing: "left" | "right";
+  fighter: HomeScreenFighter;
+  height: number;
+  leftPercent: number;
+  topPercent: number;
+  zIndex: number;
+};
+
+type TitleRosterLayoutEntry = TitleRosterPhotoSpriteProps;
 
 type MenuEntry = {
   disabled?: boolean;
@@ -40,63 +57,25 @@ type HomeScreenProps = {
   showLab?: boolean;
 };
 
-function preloadImage(src: string) {
-  return new Promise<boolean>((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve(true);
-    image.onerror = () => resolve(false);
-    image.src = src;
-  });
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
-async function loadSequentialFrames(assetDirectory: string) {
-  const namingStrategies = [
-    (index: number) => `${String(index + 1).padStart(2, "0")}.png`,
-    (index: number) => `${index}.png`,
-    (index: number) => `${index + 1}.png`,
-  ];
+function shuffleItems<T>(sourceItems: T[]) {
+  const nextItems = [...sourceItems];
 
-  for (const getFrameName of namingStrategies) {
-    const discoveredFrames: string[] = [];
-    for (let index = 0; index < MAX_IDLE_FRAME_SCAN; index += 1) {
-      const src = `${assetDirectory}${getFrameName(index)}`;
-      const exists = await preloadImage(src);
-      if (!exists) {
-        break;
-      }
-      discoveredFrames.push(src);
-    }
-
-    if (discoveredFrames.length > 0) {
-      return discoveredFrames;
-    }
+  for (let index = nextItems.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [nextItems[index], nextItems[swapIndex]] = [
+      nextItems[swapIndex],
+      nextItems[index],
+    ];
   }
 
-  return [];
+  return nextItems;
 }
 
-async function discoverIdleFrames(fighter: (typeof fighters)[number]) {
-  for (const directory of getFighterAnimationDirectories(fighter, "idle")) {
-    const frames = await loadSequentialFrames(directory);
-    if (frames.length > 0) {
-      return frames;
-    }
-  }
-
-  return [];
-}
-
-async function discoverPortraitSource(fighter: (typeof fighters)[number]) {
-  for (const candidate of getFighterPortraitCandidates(fighter)) {
-    if (await preloadImage(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
+function useAnimatedFighterSource(fighter: HomeScreenFighter | undefined) {
   const [frameSources, setFrameSources] = useState<string[]>([]);
   const [portraitSource, setPortraitSource] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -116,8 +95,8 @@ function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
       setPortraitSource(null);
       setCurrentFrame(0);
       const [discoveredFrames, discoveredPortrait] = await Promise.all([
-        discoverIdleFrames(fighter),
-        discoverPortraitSource(fighter),
+        getCachedIdleFrames(fighter),
+        getCachedPortraitSource(fighter),
       ]);
 
       if (cancelled) {
@@ -149,11 +128,79 @@ function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
     };
   }, [currentFrame, frameSources]);
 
+  return frameSources[currentFrame] ?? portraitSource;
+}
+
+function getTitleSpriteHeight(fighter: HomeScreenFighter) {
+  return clamp(
+    Math.round((fighter.sprites.renderHeight ?? 96) * 1.44),
+    123,
+    195,
+  );
+}
+
+function buildTitleRosterLayout(
+  sourceFighters: HomeScreenFighter[],
+): TitleRosterLayoutEntry[] {
+  const shuffledFighters = shuffleItems(sourceFighters);
+  const slotCount = shuffledFighters.length;
+  const slotSpread = clamp(slotCount * 9.2, 52, TITLE_ROSTER_SLOT_SPREAD);
+  const leftPercents = shuffleItems(
+    Array.from({ length: slotCount }, (_, index) => {
+      if (slotCount <= 1) {
+        return 0;
+      }
+
+      return (index / (slotCount - 1) - 0.5) * slotSpread;
+    }),
+  );
+
+  return shuffledFighters.map((fighter, index) => {
+    const depth = Math.random();
+    const baseLeftPercent = leftPercents[index] ?? 0;
+    const sizePenalty = Math.max(0, slotCount - 8) * 3;
+    const facing =
+      Math.abs(baseLeftPercent) <= 3
+        ? Math.random() > 0.5
+          ? "left"
+          : "right"
+        : baseLeftPercent < 0
+          ? "right"
+          : "left";
+    const topPercent =
+      TITLE_ROSTER_BASE_TOP_PERCENT +
+      depth * TITLE_ROSTER_DEPTH_RANGE +
+      (Math.random() * TITLE_ROSTER_JITTER_Y * 2 - TITLE_ROSTER_JITTER_Y);
+
+    return {
+      facing,
+      fighter,
+      height: clamp(
+        getTitleSpriteHeight(fighter) +
+          Math.round(Math.random() * 8 - 4) -
+          sizePenalty,
+        114,
+        195,
+      ),
+      leftPercent: Number(
+        (
+          baseLeftPercent +
+          (Math.random() * TITLE_ROSTER_JITTER_X * 2 - TITLE_ROSTER_JITTER_X)
+        ).toFixed(2),
+      ),
+      topPercent: Number(topPercent.toFixed(2)),
+      zIndex: 12 + Math.round(depth * 12) + Math.round(topPercent / 5),
+    };
+  });
+}
+
+function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
+  const currentSource = useAnimatedFighterSource(fighter);
+
   if (!fighter) {
     return null;
   }
 
-  const currentSource = frameSources[currentFrame] ?? portraitSource;
   const renderHeight = (fighter.sprites.renderHeight ?? 168) * 2;
 
   return (
@@ -164,6 +211,38 @@ function MenuCharacterDisplay({ fighter, side }: MenuCharacterDisplayProps) {
           alt={fighter.name}
           className={`landing-menu-character-image landing-menu-character-image-${side}`}
           style={{ height: `${renderHeight}px` }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function TitleRosterPhotoSprite({
+  facing,
+  fighter,
+  height,
+  leftPercent,
+  topPercent,
+  zIndex,
+}: TitleRosterPhotoSpriteProps) {
+  const currentSource = useAnimatedFighterSource(fighter);
+
+  return (
+    <div
+      className="landing-title-roster-photo-member"
+      aria-label={fighter.name}
+      style={{
+        left: `${50 + leftPercent}%`,
+        top: `${50 + topPercent}%`,
+        zIndex,
+      }}
+    >
+      {currentSource ? (
+        <img
+          src={currentSource}
+          alt={fighter.name}
+          className={`landing-title-roster-photo-image landing-title-roster-photo-image-${facing}`}
+          style={{ height: `${height}px` }}
         />
       ) : null}
     </div>
@@ -212,6 +291,9 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
   const [menuPair, setMenuPair] = useState<[string, string]>(() => pickRandomMenuPair());
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(() =>
     menuEntries.findIndex((entry) => !entry.disabled),
+  );
+  const [titleRosterLayout, setTitleRosterLayout] = useState(() =>
+    buildTitleRosterLayout(fighters),
   );
 
   const leftFighter = useMemo(
@@ -270,6 +352,14 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
       return;
     }
 
+    void Promise.all(fighters.map((fighter) => getCachedHeadshotSource(fighter)));
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "menu") {
+      return;
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) {
         return;
@@ -277,6 +367,7 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
 
       if (event.code === "Escape" || isMenuBackKey(event)) {
         event.preventDefault();
+        setTitleRosterLayout(buildTitleRosterLayout(fighters));
         setStage("title");
         return;
       }
@@ -319,12 +410,23 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
     return (
       <main className="landing-page landing-title-screen" role="button" tabIndex={0} aria-label="Press any button to open the main menu">
         <div className="landing-title-content">
-          <img
-            className="landing-title-logo"
-            src="/fighters-pixel-logo.png"
-            alt="Battleborn Fighters"
-          />
-          <p className="landing-title-prompt">Press Any Button</p>
+          <div className="landing-title-center">
+            <img
+              className="landing-title-logo"
+              src="/fighters-pixel-logo.png"
+              alt="Battleborn Fighters"
+            />
+            <div className="landing-title-roster-photo" aria-hidden="true">
+              {titleRosterLayout.map(({ fighter, ...layout }) => (
+                <TitleRosterPhotoSprite
+                  key={fighter.id}
+                  fighter={fighter}
+                  {...layout}
+                />
+              ))}
+            </div>
+            <p className="landing-title-prompt">Press Any Button</p>
+          </div>
         </div>
       </main>
     );

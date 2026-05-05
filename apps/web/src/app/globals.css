@@ -123,6 +123,7 @@ body.fight-route-active .app-content {
 .landing-page {
   position: relative;
   width: 100%;
+  height: 100%;
   min-height: 100%;
   overflow: hidden;
   background: #04070f;
@@ -162,26 +163,35 @@ body.fight-route-active .app-content {
 }
 
 .landing-title-content {
-  display: grid;
-  align-content: center;
-  gap: clamp(14px, 3.6cqh, 28px);
+  width: 100%;
+  height: 100%;
   min-height: 100%;
-  justify-items: center;
-  padding:
-    clamp(20px, 4cqh, 32px)
-    clamp(20px, 4cqh, 32px)
-    clamp(84px, 12cqh, 120px);
+  padding: clamp(12px, 2.8cqh, 22px) clamp(10px, 2.4cqw, 20px);
   text-align: center;
 }
 
+.landing-title-center {
+  position: relative;
+  width: min(100%, 1040px);
+  height: 100%;
+  min-height: 100%;
+  min-width: 0;
+  margin: 0 auto;
+}
+
 .landing-title-logo {
+  position: absolute;
+  top: clamp(6px, 2.2cqh, 20px);
+  left: 50%;
   display: block;
-  width: min(126cqw, 1008px);
-  max-width: none;
-  max-height: none;
+  z-index: 0;
+  width: min(100%, 860px);
   height: auto;
   object-fit: contain;
   image-rendering: pixelated;
+  opacity: 0.76;
+  transform: translateX(-50%);
+  pointer-events: none;
   filter:
     drop-shadow(-4px -4px 0 rgba(11, 11, 24, 0.96))
     drop-shadow(4px -4px 0 rgba(11, 11, 24, 0.96))
@@ -191,14 +201,63 @@ body.fight-route-active .app-content {
 }
 
 .landing-title-prompt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 40;
   margin: 0;
   color: #33d9ff;
   font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
-  font-size: clamp(1.6rem, 4cqw, 3rem);
-  letter-spacing: 0.12em;
+  font-size: clamp(2rem, 5cqw, 3.6rem);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   white-space: nowrap;
+  transform: translate(-50%, -50%);
   animation: landing-prompt-flash 900ms steps(2, end) infinite;
+  text-shadow:
+    -3px -3px 0 rgba(11, 11, 24, 0.96),
+    3px -3px 0 rgba(11, 11, 24, 0.96),
+    -3px 3px 0 rgba(11, 11, 24, 0.96),
+    3px 3px 0 rgba(11, 11, 24, 0.96),
+    0 0 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.landing-title-roster-photo {
+  position: absolute;
+  left: 50%;
+  top: 80%;
+  z-index: 1;
+  width: min(100%, 1020px);
+  height: clamp(180px, 52cqh, 300px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.landing-title-roster-photo-member {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+  transform: translate(-50%, -50%);
+}
+
+.landing-title-roster-photo-image {
+  display: block;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.42));
+}
+
+.landing-title-roster-photo-image-left {
+  transform: none;
+}
+
+.landing-title-roster-photo-image-right {
+  transform: scaleX(-1);
 }
 
 .landing-menu-screen {
@@ -2552,7 +2611,7 @@ body.fight-route-active .app-content {
 
 .fight-training-panel {
   position: absolute;
-  top: clamp(96px, 14cqh, 132px);
+  top: clamp(128px, 18cqh, 168px);
   right: clamp(12px, 2.4cqw, 28px);
   display: flex;
   justify-content: flex-end;
@@ -3443,6 +3502,25 @@ body.fight-route-active .app-content {
 }
 
 @container app-frame (max-width: 720px) {
+  .landing-title-content {
+    padding: clamp(10px, 2.2cqh, 16px) clamp(8px, 1.6cqw, 12px);
+  }
+
+  .landing-title-logo {
+    width: min(100%, 600px);
+  }
+
+  .landing-title-center {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  .landing-title-roster-photo {
+    top: 80%;
+    width: min(100%, 760px);
+    height: clamp(120px, 30cqh, 190px);
+  }
+
   .arcade-clear-panel {
     grid-template-columns: 1fr;
     justify-items: center;
@@ -3608,7 +3686,7 @@ body.fight-route-active .app-content {
   }
 
   .fight-training-panel {
-    top: 86px;
+    top: 108px;
     right: 10px;
   }
 
@@ -3690,6 +3768,30 @@ body.fight-route-active .app-content {
 }
 
 @container app-frame (max-height: 460px) {
+  .landing-title-content {
+    padding: clamp(8px, 1.6cqh, 10px) clamp(8px, 1.4cqw, 12px);
+  }
+
+  .landing-title-center {
+    min-height: 100%;
+  }
+
+  .landing-title-logo {
+    top: clamp(4px, 1.8cqh, 10px);
+    width: min(100%, 460px);
+  }
+
+  .landing-title-prompt {
+    top: 50%;
+    font-size: clamp(1.64rem, 3.8cqw, 2.24rem);
+  }
+
+  .landing-title-roster-photo {
+    top: 80%;
+    width: min(100%, 580px);
+    height: clamp(104px, 24cqh, 148px);
+  }
+
   .arcade-clear-panel {
     grid-template-columns: 1fr;
     justify-items: center;
@@ -3809,7 +3911,7 @@ body.fight-route-active .app-content {
   }
 
   .fight-training-panel {
-    top: 80px;
+    top: 100px;
     right: 10px;
   }
 
