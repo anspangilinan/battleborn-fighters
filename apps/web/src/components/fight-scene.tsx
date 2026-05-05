@@ -3947,6 +3947,7 @@ export function FightScene(props: FightSceneProps) {
           1 | 2,
           InstanceType<typeof Phaser.GameObjects.Image>
         >();
+        private fighterBaselineFrameHeights = new Map<string, number>();
         private projectileSprites = new Map<
           number,
           InstanceType<typeof Phaser.GameObjects.Image>
@@ -4381,13 +4382,28 @@ export function FightScene(props: FightSceneProps) {
                   selectedArena.combatOffsetY,
                 );
                 return;
-              }
+            }
               const sourceImage = this.textures
                 .get(textureKey)
                 .getSourceImage() as { height: number };
+              const cachedBaselineHeight = this.fighterBaselineFrameHeights.get(
+                fighter.fighterId,
+              );
+              const baselineHeight =
+                cachedBaselineHeight ?? sourceImage.height;
+
+              // Some stances have different source image heights (different canvas bounds),
+              // which would otherwise make the fighter appear to shrink/grow mid-combo.
+              // Use a per-fighter baseline (prefer the idle stance) to keep visual scale stable.
+              if (!cachedBaselineHeight || activeStance === 'idle') {
+                this.fighterBaselineFrameHeights.set(
+                  fighter.fighterId,
+                  sourceImage.height,
+                );
+              }
               const spriteScale =
                 (definition.sprites.renderHeight ??
-                  defaultFighterRenderHeight) / sourceImage.height;
+                  defaultFighterRenderHeight) / baselineHeight;
               const fighterSprite =
                 existingSprite ??
                 this.add.image(
