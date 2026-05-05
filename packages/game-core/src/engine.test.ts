@@ -218,6 +218,31 @@ const unblockableProjectileFighter: CharacterDefinition = {
   },
 };
 
+const multiShotHitboxFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "multi-shot-hitbox-fighter",
+  name: "Multi Shot Hitbox Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      startup: 1,
+      recovery: 30,
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        spawnFrame: 1,
+        shotCount: 3,
+        shotIntervalFrames: 1,
+        shotHitboxes: [
+          { ...projectileFighter.moves.punch.projectile!.hitbox, knockbackX: 1 },
+          { ...projectileFighter.moves.punch.projectile!.hitbox, knockbackX: 2 },
+          { ...projectileFighter.moves.punch.projectile!.hitbox, knockbackX: 9 },
+        ],
+      },
+    },
+  },
+};
+
 const fastProjectileFighter: CharacterDefinition = {
   ...projectileFighter,
   id: "fast-projectile-fighter",
@@ -1709,6 +1734,31 @@ test("guard bypass projectiles still land through guard", () => {
   assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 55);
   assert.ok(state.events.some((entry) => entry.includes("landed Guard Break Bolt")));
   assert.ok(!state.events.some((entry) => entry.includes("blocked Guard Break Bolt")));
+});
+
+test("multi-shot projectiles can override hitboxes per shot index", () => {
+  const roster = {
+    [multiShotHitboxFighter.id]: multiShotHitboxFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, multiShotHitboxFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  assert.equal(state.projectiles.length, 0);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.projectiles.length, 1);
+  assert.equal(state.projectiles[0].hitbox.knockbackX, 1);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.projectiles.length, 2);
+  assert.equal(state.projectiles[1].hitbox.knockbackX, 2);
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  assert.equal(state.projectiles.length, 3);
+  assert.equal(state.projectiles[2].hitbox.knockbackX, 9);
 });
 
 test("projectile apex height stays stable when speed changes", () => {

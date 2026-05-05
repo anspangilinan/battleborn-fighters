@@ -274,7 +274,7 @@ export function stepMatch(
     }
 
     if (!specialCinematicFrozen) {
-      updateProjectiles(state, config);
+      updateProjectiles(state, config, roster);
       resolveProjectileClashes(state);
       resolveAttackProjectileClashes(state, fighterA, definitionA);
       resolveAttackProjectileClashes(state, fighterB, definitionB);
@@ -1163,10 +1163,12 @@ function maybeSpawnProjectile(
     return;
   }
 
-  if (attackFrameOffset / shotIntervalFrames >= shotCount) {
+  const shotIndex = attackFrameOffset / shotIntervalFrames;
+  if (shotIndex >= shotCount) {
     return;
   }
 
+  const resolvedHitbox = projectile.shotHitboxes?.[shotIndex] ?? projectile.hitbox;
   const minimumDistance = config.width * projectile.minimumDistanceRatio;
   const maximumDistance = projectile.maximumDistanceRatio == null
     ? undefined
@@ -1231,7 +1233,8 @@ function maybeSpawnProjectile(
     originX: spawnX,
     minimumDistance,
     maximumDistance,
-    hitbox: projectile.hitbox,
+    hitbox: resolvedHitbox,
+    homing: projectile.homing,
   });
   state.nextProjectileId += 1;
 }
@@ -1381,8 +1384,26 @@ export function getDashDurationFrames(definition: CharacterDefinition) {
   );
 }
 
-function updateProjectiles(state: MatchState, config: MatchConfig) {
+function updateProjectiles(
+  state: MatchState,
+  config: MatchConfig,
+  roster: Record<string, CharacterDefinition>,
+) {
   state.projectiles = state.projectiles.filter((projectile) => {
+    if (projectile.homing) {
+      const ownerIndex = projectile.ownerSlot === 1 ? 0 : 1;
+      const opponentIndex = ownerIndex === 0 ? 1 : 0;
+      const opponent = state.fighters[opponentIndex];
+      const opponentDefinition = roster[opponent.fighterId];
+      const opponentAimPoint = getFighterAimPoint(opponent, opponentDefinition);
+      const dx = opponentAimPoint.x - projectile.x;
+      const dy = opponentAimPoint.y - projectile.y;
+      const magnitude = Math.max(0.0001, Math.hypot(dx, dy));
+      const speed = Math.max(0.0001, Math.hypot(projectile.vx, projectile.vy));
+      projectile.vx = (dx / magnitude) * speed;
+      projectile.vy = (dy / magnitude) * speed;
+      projectile.facing = projectile.vx >= 0 ? 1 : -1;
+    }
     projectile.ageFrames += 1;
     projectile.vy += projectile.gravity;
     projectile.x += projectile.vx;
@@ -1811,6 +1832,11 @@ function resolveProjectileClashes(state: MatchState) {
     for (let otherIndex = index + 1; otherIndex < state.projectiles.length; otherIndex += 1) {
       const other = state.projectiles[otherIndex];
       if (destroyedProjectileIds.has(other.id)) {
+        continue;
+      }
+      // Projectiles fired by the same fighter should not destroy each other,
+      // otherwise multi-shot bursts self-collide immediately.
+      if (other.ownerSlot === current.ownerSlot) {
         continue;
       }
 

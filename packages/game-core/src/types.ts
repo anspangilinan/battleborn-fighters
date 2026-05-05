@@ -119,6 +119,7 @@ export interface ProjectileDefinition {
   hitIntervalFrames?: number;
   shotCount?: number;
   shotIntervalFrames?: number;
+  shotHitboxes?: HitBox[];
   spawnAnchor?: "attacker" | "opponent";
   spriteScale?: number;
   animationFrameDurationFrames?: number;
@@ -126,6 +127,11 @@ export interface ProjectileDefinition {
   offsetY: number;
   speed: number;
   targeting?: "forward" | "opponent";
+  /**
+   * If true, continuously steers towards the opponent each frame.
+   * Opt-in so existing "opponent" targeting remains fire-and-forget.
+   */
+  homing?: boolean;
   minimumDistanceRatio: number;
   maximumDistanceRatio?: number;
   apexHeight: number;
@@ -270,6 +276,7 @@ export interface ProjectileRuntimeState {
   minimumDistance: number;
   maximumDistance?: number;
   hitbox: HitBox;
+  homing?: boolean;
 }
 
 export interface MatchConfig {
