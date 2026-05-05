@@ -292,9 +292,7 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(() =>
     menuEntries.findIndex((entry) => !entry.disabled),
   );
-  const [titleRosterLayout, setTitleRosterLayout] = useState(() =>
-    buildTitleRosterLayout(fighters),
-  );
+  const [titleRosterLayout, setTitleRosterLayout] = useState<TitleRosterLayoutEntry[]>([]);
 
   const leftFighter = useMemo(
     () => fighters.find((fighter) => fighter.id === menuPair[0]) ?? fighters[0],
@@ -309,6 +307,8 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
     if (stage !== "title") {
       return;
     }
+
+    setTitleRosterLayout(buildTitleRosterLayout(fighters));
 
     const advanceToMenu = () => {
       setStage("menu");
