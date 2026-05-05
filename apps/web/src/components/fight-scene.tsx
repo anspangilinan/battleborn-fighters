@@ -323,6 +323,10 @@ type FullscreenCapableDocument = Document & {
 const phaserModulePromise = import('phaser').then(
   (PhaserModule) => PhaserModule.default,
 );
+const fighterPreviewAssetManifestPromiseCache = new Map<
+  string,
+  Promise<FighterAssetManifest>
+>();
 const fighterAssetManifestPromiseCache = new Map<
   string,
   Promise<FighterAssetManifest>
@@ -621,7 +625,38 @@ async function discoverFighterAssets(
   };
 }
 
-function getCachedFighterAssets(fighter: CharacterDefinition) {
+async function discoverFighterPreviewAssets(
+  fighter: CharacterDefinition,
+): Promise<FighterAssetManifest> {
+  const portraitSource = await getCachedPortraitSource(fighter);
+  const headshotSource = await getCachedHeadshotSource(fighter);
+  const emptyStances: Record<FightAnimationStance, string[]> = Object.fromEntries(
+    fightAnimationStances.map((stance) => [stance, []] as const),
+  ) as unknown as Record<FightAnimationStance, string[]>;
+
+  return {
+    headshotSource,
+    portraitSource,
+    stanceSources: emptyStances,
+    winCompanion: null,
+  };
+}
+
+function getCachedFighterPreviewAssets(fighter: CharacterDefinition) {
+  const cachedManifest = fighterPreviewAssetManifestPromiseCache.get(fighter.id);
+  if (cachedManifest) {
+    return cachedManifest;
+  }
+
+  const manifestPromise = discoverFighterPreviewAssets(fighter).catch((error) => {
+    fighterPreviewAssetManifestPromiseCache.delete(fighter.id);
+    throw error;
+  });
+  fighterPreviewAssetManifestPromiseCache.set(fighter.id, manifestPromise);
+  return manifestPromise;
+}
+
+function getCachedFighterFullAssets(fighter: CharacterDefinition) {
   const cachedManifest = fighterAssetManifestPromiseCache.get(fighter.id);
 
   if (cachedManifest) {
@@ -3781,7 +3816,9 @@ export function FightScene(props: FightSceneProps) {
       }
     };
 
-    const ensureFighterAssets = async (fightersToLoad: CharacterDefinition[]) => {
+    const ensureFighterPreviewAssets = async (
+      fightersToLoad: CharacterDefinition[],
+    ) => {
       const missingFighters = getUniqueFighters(fightersToLoad).filter(
         (fighter) => !fighterAssetManifestsRef.current[fighter.id],
       );
@@ -3793,7 +3830,34 @@ export function FightScene(props: FightSceneProps) {
       const assetEntries = await Promise.all(
         missingFighters.map(
           async (fighter) =>
-            [fighter.id, await getCachedFighterAssets(fighter)] as const,
+            [fighter.id, await getCachedFighterPreviewAssets(fighter)] as const,
+        ),
+      );
+
+      mergeFighterAssetEntries(assetEntries);
+    };
+
+    const ensureFighterFullAssets = async (fightersToLoad: CharacterDefinition[]) => {
+      const missingOrPreviewFighters = getUniqueFighters(fightersToLoad).filter((fighter) => {
+        const existing = fighterAssetManifestsRef.current[fighter.id];
+        if (!existing) {
+          return true;
+        }
+
+        // Preview manifests intentionally have empty stanceSources; treat as needing full discovery.
+        return fightAnimationStances.some(
+          (stance) => (existing.stanceSources[stance]?.length ?? 0) === 0,
+        );
+      });
+
+      if (missingOrPreviewFighters.length === 0) {
+        return;
+      }
+
+      const assetEntries = await Promise.all(
+        missingOrPreviewFighters.map(
+          async (fighter) =>
+            [fighter.id, await getCachedFighterFullAssets(fighter)] as const,
         ),
       );
 
@@ -3834,15 +3898,13 @@ export function FightScene(props: FightSceneProps) {
         ),
       );
 
-      await Promise.all([
-        ensureFighterAssets(fightersToLoad),
-        ensureProjectileAssets(fightersToLoad),
-      ]);
+      await Promise.all([ensureFighterPreviewAssets(fightersToLoad), ensureProjectileAssets(fightersToLoad)]);
+      void ensureFighterFullAssets(fightersToLoad);
     };
 
     void (async () => {
       await Promise.all([
-        ensureFighterAssets([fighterDefinition, opponentDefinition]),
+        ensureFighterPreviewAssets([fighterDefinition, opponentDefinition]),
         ensureProjectileAssets([fighterDefinition, opponentDefinition]),
       ]);
 
@@ -4560,9 +4622,7 @@ export function FightScene(props: FightSceneProps) {
         scene: ArenaScene,
       });
 
-      if (audienceDefinitions.length > 0) {
-        void ensureFighterAssets(audienceDefinitions);
-      }
+      void ensureFighterFullAssets([fighterDefinition, opponentDefinition, ...audienceDefinitions]);
     })();
 
     return () => {
