@@ -3842,11 +3842,7 @@ export function FightScene(props: FightSceneProps) {
 
     void (async () => {
       await Promise.all([
-        ensureFighterAssets([
-          fighterDefinition,
-          opponentDefinition,
-          ...audienceDefinitions,
-        ]),
+        ensureFighterAssets([fighterDefinition, opponentDefinition]),
         ensureProjectileAssets([fighterDefinition, opponentDefinition]),
       ]);
 
@@ -4563,6 +4559,10 @@ export function FightScene(props: FightSceneProps) {
         backgroundColor: 'rgba(0, 0, 0, 0)',
         scene: ArenaScene,
       });
+
+      if (audienceDefinitions.length > 0) {
+        void ensureFighterAssets(audienceDefinitions);
+      }
     })();
 
     return () => {
