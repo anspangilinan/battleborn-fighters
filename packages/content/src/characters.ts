@@ -15,6 +15,11 @@ const morana: CharacterDefinition = {
   sprites: {
     portrait: '/characters/morana/profile.png',
     renderHeight: 120,
+    stanceAliases: {
+      // Many characters don't ship a dedicated guard animation yet.
+      // Falling back prevents extra asset scans and missing-frame glitches.
+      block: ['idle'],
+    },
   },
   bot: {
     aggressiveness: 0.42,
@@ -104,7 +109,8 @@ const morana: CharacterDefinition = {
       },
       hitboxAnchor: 'attack-origin',
       effectAnimation: {
-        sprite: 'characters/morana/animations/attack2-effect',
+        // TODO: swap back to 'characters/morana/animations/attack2-effect' once the asset exists.
+        sprite: 'characters/morana/animations/attack2',
         startFrame: 3,
         offsetX: 35,
         offsetY: -63,
@@ -187,6 +193,9 @@ const mcbalut: CharacterDefinition = {
   sprites: {
     portrait: '/characters/mcbalut/profile.png',
     renderHeight: 110,
+    stanceAliases: {
+      block: ['idle'],
+    },
   },
   bot: {
     aggressiveness: 1,
@@ -377,6 +386,7 @@ export const mcbalutAnomaly: CharacterDefinition = {
     assetRoot: 'mcbalut-anomaly',
     stanceAliases: {
       special: ['attack2'],
+      block: ['idle'],
     },
   },
   bot: {
@@ -547,6 +557,9 @@ const digv: CharacterDefinition = {
   sprites: {
     portrait: '/characters/digv/profile.png',
     renderHeight: 100,
+    stanceAliases: {
+      block: ['idle'],
+    },
   },
   bot: {
     aggressiveness: 0.64,
@@ -1427,6 +1440,9 @@ const mrsdoc: CharacterDefinition = {
     portrait: '/characters/mrsdoc/profile.png',
     renderHeight: 108,
     assetRoot: 'mrsdoc',
+    stanceAliases: {
+      block: ['idle'],
+    },
   },
   bot: {
     aggressiveness: 0.58,
@@ -1586,6 +1602,9 @@ const anjokbal: CharacterDefinition = {
     portrait: '/characters/anjokbal/profile.png',
     renderHeight: 114,
     assetRoot: 'anjokbal',
+    stanceAliases: {
+      block: ['idle'],
+    },
   },
   bot: {
     aggressiveness: 0.66,
