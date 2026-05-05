@@ -1810,9 +1810,15 @@ body.fight-route-active .app-content {
 .fight-character-select {
   position: relative;
   display: grid;
-  --fight-character-select-roster-width: clamp(56px, 10cqw, 96px);
+  --fight-character-select-headshot-size: clamp(44px, 8cqw, 72px);
+  --fight-character-select-roster-gap: 8px;
+  --fight-character-select-roster-width: calc(
+    (var(--fight-character-select-headshot-size) * 2) +
+    var(--fight-character-select-roster-gap) +
+    12px
+  );
   --fight-character-select-versus-width: clamp(24px, 5cqw, 52px);
-  --fight-hud-side-width: calc(var(--fight-character-select-roster-width) - 12px);
+  --fight-hud-side-width: var(--fight-character-select-headshot-size);
   grid-template-columns: var(--fight-character-select-roster-width) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   align-items: stretch;
@@ -1836,10 +1842,13 @@ body.fight-route-active .app-content {
 
 .fight-character-select-roster {
   display: grid;
+  grid-template-columns: repeat(2, var(--fight-character-select-headshot-size));
+  justify-content: center;
   justify-items: center;
   align-content: start;
-  gap: 8px;
+  gap: var(--fight-character-select-roster-gap);
   padding-inline: 6px;
+  min-height: 0;
   overflow-x: visible;
   overflow-y: auto;
   scrollbar-gutter: stable;
