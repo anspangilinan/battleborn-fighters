@@ -2833,6 +2833,59 @@ body.fight-route-active .app-content {
   text-transform: uppercase;
 }
 
+.fight-load-error-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(20px, 4cqw, 44px);
+  background:
+    linear-gradient(180deg, rgba(7, 16, 26, 0.94), rgba(7, 16, 26, 0.86)),
+    radial-gradient(circle at center, rgba(255, 96, 82, 0.13), transparent 42%);
+}
+
+.fight-load-error-panel {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: min(620px, 100%);
+  padding: clamp(22px, 4cqw, 36px);
+  border: 3px solid rgba(255, 236, 168, 0.72);
+  background: rgba(9, 15, 25, 0.94);
+  box-shadow:
+    0 0 0 2px rgba(5, 8, 14, 0.8),
+    0 20px 38px rgba(0, 0, 0, 0.42);
+  text-align: center;
+}
+
+.fight-load-error-title {
+  color: #fff07f;
+  font-family: var(--font-ui), Impact, Haettenschweiler, "Arial Black", sans-serif;
+  font-size: clamp(1.85rem, 4cqw, 3.15rem);
+  line-height: 0.9;
+  text-transform: uppercase;
+  text-shadow:
+    -2px -2px 0 rgba(8, 12, 20, 0.94),
+    2px -2px 0 rgba(8, 12, 20, 0.94),
+    -2px 2px 0 rgba(8, 12, 20, 0.94),
+    2px 2px 0 rgba(8, 12, 20, 0.94);
+}
+
+.fight-load-error-copy {
+  display: grid;
+  gap: 7px;
+  color: rgba(244, 243, 232, 0.88);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: clamp(0.9rem, 1.8cqw, 1.05rem);
+  line-height: 1.35;
+}
+
+.fight-load-error-action {
+  min-width: min(280px, 100%);
+}
+
 .fight-arcade-result-overlay {
   position: absolute;
   inset: 0;

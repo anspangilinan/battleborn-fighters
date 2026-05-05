@@ -310,6 +310,11 @@ type ProjectileAssetManifest = {
   frameSources: string[];
 };
 
+type FighterAssetReadinessIssue = {
+  fighterName: string;
+  reason: string;
+};
+
 type FullscreenCapableElement = HTMLDivElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
 };
@@ -876,6 +881,27 @@ function getAvailableAnimationStance(
   }
 
   return manifest.stanceSources.idle.length > 0 ? 'idle' : null;
+}
+
+function getFighterAssetReadinessIssue(
+  fighter: CharacterDefinition,
+  manifest: FighterAssetManifest | undefined,
+): FighterAssetReadinessIssue | null {
+  if (!manifest) {
+    return {
+      fighterName: fighter.name,
+      reason: 'assets could not be discovered',
+    };
+  }
+
+  if (manifest.stanceSources.idle.length === 0) {
+    return {
+      fighterName: fighter.name,
+      reason: 'idle animation frames are missing',
+    };
+  }
+
+  return null;
 }
 
 function isBlinkFrameVisible(
@@ -3065,6 +3091,7 @@ export function FightScene(props: FightSceneProps) {
     Record<string, FighterAssetManifest>
   >({});
   const [connectionState, setConnectionState] = useState('Loading');
+  const [matchLoadError, setMatchLoadError] = useState<string | null>(null);
   const [isSceneBooting, setIsSceneBooting] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreenSupported, setIsFullscreenSupported] = useState(false);
@@ -3609,6 +3636,7 @@ export function FightScene(props: FightSceneProps) {
 
     setIsSceneBooting(true);
     setConnectionState('Loading');
+    setMatchLoadError(null);
     fighterAssetManifestsRef.current = {};
     projectileAssetSourcesRef.current = {};
     setFighterAssetManifests({});
@@ -3904,11 +3932,33 @@ export function FightScene(props: FightSceneProps) {
 
     void (async () => {
       await Promise.all([
-        ensureFighterPreviewAssets([fighterDefinition, opponentDefinition]),
+        ensureFighterFullAssets([fighterDefinition, opponentDefinition]),
         ensureProjectileAssets([fighterDefinition, opponentDefinition]),
       ]);
 
       if (destroyed) {
+        return;
+      }
+
+      const readinessIssues = [fighterDefinition, opponentDefinition].flatMap(
+        (fighter) => {
+          const issue = getFighterAssetReadinessIssue(
+            fighter,
+            fighterAssetManifestsRef.current[fighter.id],
+          );
+
+          return issue ? [issue] : [];
+        },
+      );
+
+      if (readinessIssues.length > 0) {
+        setConnectionState('Fighter assets unavailable.');
+        setMatchLoadError(
+          readinessIssues
+            .map((issue) => `${issue.fighterName}: ${issue.reason}`)
+            .join('\n'),
+        );
+        setIsSceneBooting(false);
         return;
       }
 
@@ -4638,7 +4688,7 @@ export function FightScene(props: FightSceneProps) {
         scene: ArenaScene,
       });
 
-      void ensureFighterFullAssets([fighterDefinition, opponentDefinition, ...audienceDefinitions]);
+      void ensureFighterFullAssets(audienceDefinitions);
     })();
 
     return () => {
@@ -4742,6 +4792,7 @@ export function FightScene(props: FightSceneProps) {
     : null;
   const fightAnnouncement =
     koAnnouncement ?? countdownAnnouncement ?? roundResultAnnouncement;
+  const isMatchLoaded = !isSceneBooting && !matchLoadError;
 
   useEffect(() => {
     document.body.classList.add('fight-route-active');
@@ -4795,7 +4846,7 @@ export function FightScene(props: FightSceneProps) {
           />
         </div>
       ) : null}
-      {!isSceneBooting && isFullscreenSupported ? (
+      {isMatchLoaded && isFullscreenSupported ? (
         <button
           type="button"
           className={`fight-fullscreen-toggle${isFullscreen ? ' fight-fullscreen-toggle-active' : ''}`}
@@ -4878,7 +4929,21 @@ export function FightScene(props: FightSceneProps) {
             <div className="fight-audience-haze" />
           </div>
         ) : null}
-        {isSceneBooting ? (
+        {matchLoadError ? (
+          <div className="fight-load-error-overlay" role="alert">
+            <div className="fight-load-error-panel">
+              <div className="fight-load-error-title">Fighter Assets Missing</div>
+              <div className="fight-load-error-copy">
+                {matchLoadError.split('\n').map((line, index) => (
+                  <span key={`${line}-${index}`}>{line}</span>
+                ))}
+              </div>
+              <ArcadeMenuItem href="/fight" className="fight-load-error-action">
+                Choose Fighters
+              </ArcadeMenuItem>
+            </div>
+          </div>
+        ) : isSceneBooting ? (
           <div className="fight-loading-overlay">
             <div className="fight-loading-faceoff">
               <div className="fight-loading-entry fight-loading-entry-player">
@@ -4958,7 +5023,7 @@ export function FightScene(props: FightSceneProps) {
             </div>
           </div>
         ) : null}
-        {!isSceneBooting && activeSpecialCinematic ? (
+        {isMatchLoaded && activeSpecialCinematic ? (
           <div
             className={`fight-special-overlay fight-special-phase-${activeSpecialCinematic.phase}`}
             aria-hidden="true"
@@ -4973,7 +5038,7 @@ export function FightScene(props: FightSceneProps) {
             ) : null}
           </div>
         ) : null}
-        {!isSceneBooting && overchargeActivationFlashes.length > 0 ? (
+        {isMatchLoaded && overchargeActivationFlashes.length > 0 ? (
           <div
             className="fight-overcharge-flash-overlay"
             aria-hidden="true"
@@ -4987,14 +5052,14 @@ export function FightScene(props: FightSceneProps) {
             ))}
           </div>
         ) : null}
-        {!isSceneBooting && hudState ? (
+        {isMatchLoaded && hudState ? (
           <FightHud
             roster={roster}
             state={hudState}
             headshots={hudHeadshots}
           />
         ) : null}
-        {!isSceneBooting && props.mode === 'training' ? (
+        {isMatchLoaded && props.mode === 'training' ? (
           <div
             className="fight-training-panel"
             role="group"
@@ -5056,7 +5121,7 @@ export function FightScene(props: FightSceneProps) {
           </div>
         ) : null}
       </div>
-      {!isSceneBooting && fightAnnouncement ? (
+      {isMatchLoaded && fightAnnouncement ? (
         <div
           className={`fight-countdown-overlay fight-countdown-phase-${fightAnnouncement.phase}`}
           aria-live="polite"
@@ -5086,7 +5151,7 @@ export function FightScene(props: FightSceneProps) {
           </div>
         </div>
       ) : null}
-      {!isSceneBooting && isArcadePostFightVisible && arcadePostFightState ? (
+      {isMatchLoaded && isArcadePostFightVisible && arcadePostFightState ? (
         <div
           className={`fight-arcade-result-overlay fight-arcade-result-${arcadePostFightState.outcome}`}
           aria-live="polite"
@@ -5138,7 +5203,7 @@ export function FightScene(props: FightSceneProps) {
           </div>
         </div>
       ) : null}
-      {!isSceneBooting && isPaused ? (
+      {isMatchLoaded && isPaused ? (
         <div className="fight-pause-overlay">
           <div className="fight-pause-panel">
             <div className="fight-pause-title">Paused</div>
@@ -5160,7 +5225,7 @@ export function FightScene(props: FightSceneProps) {
           </div>
         </div>
       ) : null}
-      {!isSceneBooting && !isPaused ? (
+      {isMatchLoaded && !isPaused ? (
         <div
           className="fight-controls-shell"
           aria-hidden="true"
