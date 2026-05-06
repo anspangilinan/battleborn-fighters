@@ -124,6 +124,10 @@ export function createMatchState(
 function getInitialMoveCooldownFrames(
   move: CharacterDefinition["moves"][string],
 ) {
+  if (move.startsReady) {
+    return 0;
+  }
+
   if (move.button !== "special") {
     return 0;
   }
@@ -161,16 +165,23 @@ function createFighterState(
     attackInputDirection: slot === 1 ? 1 : -1,
     attackStartFacing: slot === 1 ? 1 : -1,
     attackStartX: x,
+    attackStartY: groundY,
     specialMovePhase: null,
     specialMovePhaseFrame: 0,
+    channelSpecialMode: null,
     attackConnected: false,
     pendingFollowUpMoveId: null,
+    pendingFollowUpFrames: null,
+    pendingFollowUpSourceMoveId: null,
+    pendingFollowUpExpireCooldownFrames: 0,
     frozenFrames: 0,
     frozenAnimationActionFrames: 0,
     frozenAnimationMatchFrame: 0,
     hitstun: 0,
     juggleState: null,
     invulnerableFrames: 0,
+    slowFrames: 0,
+    slowMultiplier: 1,
     comboCount: 0,
     comboOwnerSlot: null,
     comboTimerFrames: 0,
@@ -541,6 +552,15 @@ function finalizeFighterFrame(
     fighter.overchargeActiveFrames = Math.max(0, fighter.overchargeActiveFrames - 1);
   }
 
+  if (fighter.slowFrames > 0) {
+    fighter.slowFrames = Math.max(0, fighter.slowFrames - 1);
+    if (fighter.slowFrames === 0) {
+      fighter.slowMultiplier = 1;
+    }
+  } else {
+    fighter.slowMultiplier = 1;
+  }
+
   if (fighter.grounded) {
     fighter.airJumpsRemaining = isOverchargeActive(fighter) ? 1 : 0;
   } else if (!isOverchargeActive(fighter)) {
@@ -572,14 +592,16 @@ function clearAttackState(fighter: FighterRuntimeState) {
   fighter.attackInputDirection = fighter.facing;
   fighter.attackStartFacing = fighter.facing;
   fighter.attackStartX = fighter.x;
+  fighter.attackStartY = fighter.y;
   fighter.specialMovePhase = null;
   fighter.specialMovePhaseFrame = 0;
+  fighter.channelSpecialMode = null;
   fighter.attackConnected = false;
 }
 
 function interruptAttack(fighter: FighterRuntimeState) {
   clearAttackState(fighter);
-  fighter.pendingFollowUpMoveId = null;
+  clearPendingFollowUp(fighter);
 }
 
 function getRequestedAttackButton(input: InputState, lastInput: InputState) {
@@ -644,6 +666,13 @@ function unlockFollowUpMove(
   }
 
   attacker.pendingFollowUpMoveId = move.followUpMoveId;
+  attacker.moveCooldownFrames[move.followUpMoveId] = 0;
+  attacker.pendingFollowUpFrames = move.followUpWindowFrames ?? null;
+  attacker.pendingFollowUpSourceMoveId = move.id;
+  attacker.pendingFollowUpExpireCooldownFrames = Math.max(
+    0,
+    Math.round((move.followUpExpireCooldownSeconds ?? 0) * FPS),
+  );
 }
 
 function canActivateOvercharge(
@@ -783,7 +812,7 @@ function updateFighter(
     if (activeMove) {
       updateSpecialChannelMovement(fighter, definition, activeMove, input);
     }
-    advanceAttack(state, fighter, opponent, definition, opponentDefinition, config);
+    advanceAttack(state, fighter, opponent, definition, opponentDefinition, input, config);
   } else if (fighter.juggleState === "airborne") {
     cancelDash(fighter);
     fighter.action = "hit";
@@ -869,17 +898,56 @@ function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDef
   }
 
   fighter.pendingFollowUpMoveId = null;
+  fighter.pendingFollowUpFrames = null;
+  fighter.pendingFollowUpSourceMoveId = null;
+  fighter.pendingFollowUpExpireCooldownFrames = 0;
   fighter.attackId = move.id;
   fighter.attackFrame = 0;
   fighter.attackInputDirection = getAttackInputDirection(fighter, input);
   fighter.attackStartFacing = fighter.facing;
   fighter.attackStartX = fighter.x;
+  fighter.attackStartY = fighter.y;
+  fighter.channelSpecialMode = move.channelSpecial?.initialMode ?? null;
   setSpecialMovePhase(fighter, move.specialSequence ? "build-up" : null);
   fighter.attackConnected = false;
   fighter.moveCooldownFrames[move.id] = getMoveCooldownFrames(move);
+  if (requestedButton === "special") {
+    const defaultSpecial = definition.moves.special;
+    if (defaultSpecial && defaultSpecial.id !== move.id) {
+      fighter.moveCooldownFrames[defaultSpecial.id] = Math.max(
+        fighter.moveCooldownFrames[defaultSpecial.id] ?? 0,
+        getMoveCooldownFrames(move),
+      );
+    }
+  }
   cancelDash(fighter);
   fighter.action = "attack";
   fighter.vx = (move.rootVelocityX ?? 0) * fighter.facing;
+
+  if (move.grantsInvulnerability) {
+    fighter.invulnerableFrames = Math.max(
+      fighter.invulnerableFrames,
+      move.startup + move.active + move.recovery,
+    );
+  }
+
+  if (move.selfHealRatio && move.selfHealRatio > 0) {
+    const healAmount = Math.floor(definition.stats.maxHealth * move.selfHealRatio);
+    if (healAmount > 0) {
+      fighter.health = Math.min(definition.stats.maxHealth, fighter.health + healAmount);
+      fighter.recoverableHealth = Math.min(
+        fighter.recoverableHealth,
+        Math.max(0, definition.stats.maxHealth - fighter.health),
+      );
+    }
+  }
+}
+
+function clearPendingFollowUp(fighter: FighterRuntimeState) {
+  fighter.pendingFollowUpMoveId = null;
+  fighter.pendingFollowUpFrames = null;
+  fighter.pendingFollowUpSourceMoveId = null;
+  fighter.pendingFollowUpExpireCooldownFrames = 0;
 }
 
 function tickMoveCooldowns(
@@ -890,12 +958,32 @@ function tickMoveCooldowns(
     const framesRemaining = fighter.moveCooldownFrames[moveId] ?? 0;
     fighter.moveCooldownFrames[moveId] = Math.max(0, framesRemaining - 1);
   }
+
+  if (fighter.pendingFollowUpFrames != null && !fighter.attackId) {
+    fighter.pendingFollowUpFrames = Math.max(0, fighter.pendingFollowUpFrames - 1);
+    if (fighter.pendingFollowUpFrames === 0) {
+      if (fighter.pendingFollowUpSourceMoveId) {
+        fighter.moveCooldownFrames[fighter.pendingFollowUpSourceMoveId] = Math.max(
+          fighter.moveCooldownFrames[fighter.pendingFollowUpSourceMoveId] ?? 0,
+          fighter.pendingFollowUpExpireCooldownFrames,
+        );
+      }
+      clearPendingFollowUp(fighter);
+    }
+  }
 }
 
 export function getMoveCooldownFrames(
   move: Pick<NonNullable<CharacterDefinition["moves"][string]>, "cooldownSeconds">,
 ) {
   return Math.max(0, Math.round((move.cooldownSeconds ?? 0) * FPS));
+}
+
+function getStatusMovementMultiplier(fighter: FighterRuntimeState) {
+  const slowMultiplier = fighter.slowFrames > 0
+    ? Math.max(0, Math.min(1, fighter.slowMultiplier))
+    : 1;
+  return getOverchargeMovementMultiplier(fighter) * slowMultiplier;
 }
 
 export function getMoveMeleeRange(
@@ -923,8 +1011,15 @@ export function getMoveMeleeRange(
 }
 
 function getMoveTotalFrames(
-  move: Pick<NonNullable<CharacterDefinition["moves"][string]>, "startup" | "active" | "recovery">,
+  move: Pick<
+    NonNullable<CharacterDefinition["moves"][string]>,
+    "startup" | "active" | "recovery" | "channelSpecial"
+  >,
 ) {
+  if (move.channelSpecial?.durationFrames != null) {
+    return move.channelSpecial.durationFrames;
+  }
+
   return move.startup + move.active + move.recovery;
 }
 
@@ -989,6 +1084,92 @@ function updateSpecialChannelMovement(
   fighter.vx = direction * channelMoveSpeed;
 }
 
+function toggleChannelSpecialMode(
+  fighter: FighterRuntimeState,
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+) {
+  const modes = move.channelSpecial?.toggleModes;
+  if (!modes || modes.length === 0) {
+    return;
+  }
+
+  const currentMode = fighter.channelSpecialMode ?? move.channelSpecial?.initialMode;
+  const currentIndex = currentMode ? modes.indexOf(currentMode) : -1;
+  fighter.channelSpecialMode = modes[(currentIndex + 1) % modes.length] ?? currentMode ?? null;
+}
+
+function applyChannelSpecialTick(
+  fighter: FighterRuntimeState,
+  opponent: FighterRuntimeState,
+  definition: CharacterDefinition,
+  opponentDefinition: CharacterDefinition,
+  move: NonNullable<CharacterDefinition["moves"][string]>,
+  input: InputState,
+) {
+  const channelSpecial = move.channelSpecial;
+  if (!channelSpecial) {
+    return;
+  }
+
+  if (input.special && !fighter.lastInput.special) {
+    toggleChannelSpecialMode(fighter, move);
+  }
+
+  const mode = fighter.channelSpecialMode ?? channelSpecial.initialMode;
+  const tickIntervalFrames = Math.max(1, channelSpecial.tickIntervalFrames ?? FPS);
+  if (mode === "heal") {
+    if (channelSpecial.healPerSecondRatio == null || fighter.attackFrame % tickIntervalFrames !== 0) {
+      return;
+    }
+
+    const healAmount = Math.floor(
+      definition.stats.maxHealth *
+        channelSpecial.healPerSecondRatio *
+        (tickIntervalFrames / FPS),
+    );
+    if (healAmount > 0) {
+      fighter.health = Math.min(definition.stats.maxHealth, fighter.health + healAmount);
+      fighter.recoverableHealth = Math.min(
+        fighter.recoverableHealth,
+        Math.max(0, definition.stats.maxHealth - fighter.health),
+      );
+    }
+    return;
+  }
+
+  if (mode === "drain") {
+    if (channelSpecial.slowMultiplier != null && opponent.health > 0) {
+      opponent.slowFrames = Math.max(opponent.slowFrames, 2);
+      opponent.slowMultiplier = Math.min(
+        opponent.slowMultiplier,
+        Math.max(0, Math.min(1, channelSpecial.slowMultiplier)),
+      );
+    }
+
+    if (channelSpecial.damagePerSecondRatio == null || fighter.attackFrame % tickIntervalFrames !== 0) {
+      return;
+    }
+
+    const damage = Math.floor(
+      opponentDefinition.stats.maxHealth *
+        channelSpecial.damagePerSecondRatio *
+        (tickIntervalFrames / FPS),
+    );
+    if (damage > 0 && opponent.health > 0) {
+      const appliedDamage = Math.min(damage, opponent.health);
+      opponent.health = Math.max(0, opponent.health - appliedDamage);
+      addRecoverableHealth(
+        opponent,
+        opponentDefinition,
+        getRecoverableDamage(appliedDamage, false),
+      );
+      registerComboHit(fighter, opponent);
+      gainOverchargeMeter(fighter, getOverchargeMeterGain("hit-done", appliedDamage));
+      gainOverchargeMeter(opponent, getOverchargeMeterGain("hit-taken", appliedDamage));
+    }
+  }
+}
+
 function finishAttack(fighter: FighterRuntimeState) {
   clearAttackState(fighter);
   fighter.action = Math.abs(fighter.vx) > 0.1 ? "walk" : "idle";
@@ -999,26 +1180,35 @@ function applyMoveRelocation(
   move: NonNullable<CharacterDefinition["moves"][string]>,
   config: MatchConfig,
 ) {
-  const relocation = move.relocation;
+  const relocation = [
+    ...(move.relocations ?? []),
+    ...(move.relocation ? [move.relocation] : []),
+  ].find(
+    (entry) =>
+      fighter.attackFrame >= entry.startFrame &&
+      fighter.attackFrame <= entry.endFrame,
+  );
   if (!relocation) {
-    return;
-  }
-
-  if (
-    fighter.attackFrame < relocation.startFrame ||
-    fighter.attackFrame > relocation.endFrame
-  ) {
     return;
   }
 
   const relocationFrameCount = relocation.endFrame - relocation.startFrame + 1;
   const completedFrames = fighter.attackFrame - relocation.startFrame + 1;
   const progress = Math.min(1, completedFrames / relocationFrameCount);
+  const startX = fighter.attackStartX +
+    fighter.attackInputDirection * (relocation.fromDistanceXRatio ?? 0) * config.width;
   const targetX = fighter.attackStartX +
     fighter.attackInputDirection * relocation.distanceXRatio * config.width;
   const clampedTargetX = Math.max(40, Math.min(config.width - 40, targetX));
 
-  fighter.x = fighter.attackStartX + (clampedTargetX - fighter.attackStartX) * progress;
+  fighter.x = startX + (clampedTargetX - startX) * progress;
+
+  if (relocation.distanceY != null || relocation.fromDistanceY != null) {
+    const startY = fighter.attackStartY + (relocation.fromDistanceY ?? 0);
+    const targetY = fighter.attackStartY + (relocation.distanceY ?? 0);
+    fighter.y = startY + (targetY - startY) * progress;
+    fighter.vy = 0;
+  }
 }
 
 function advanceAttack(
@@ -1027,6 +1217,7 @@ function advanceAttack(
   opponent: FighterRuntimeState,
   definition: CharacterDefinition,
   opponentDefinition: CharacterDefinition,
+  input: InputState,
   config: MatchConfig,
 ) {
   const move = definition.moves[fighter.attackId ?? ""];
@@ -1037,11 +1228,23 @@ function advanceAttack(
   }
 
   const totalFrames = getMoveTotalFrames(move);
+  applyChannelSpecialTick(
+    fighter,
+    opponent,
+    definition,
+    opponentDefinition,
+    move,
+    input,
+  );
   const specialSequence = move.specialSequence;
   if (specialSequence) {
     const buildUpFrames = Math.min(specialSequence.buildUpFrames, totalFrames);
     const pauseFrames = Math.max(0, specialSequence.pauseFrames ?? 0);
     const zoomOutFrames = Math.max(0, specialSequence.zoomOutFrames ?? 0);
+    const skipToFollowThrough =
+      specialSequence.skipToFollowThroughOnSpecialInput &&
+      input.special &&
+      !fighter.lastInput.special;
 
     switch (fighter.specialMovePhase) {
       case "landing-hold":
@@ -1056,6 +1259,11 @@ function advanceAttack(
       case "pause":
         fighter.specialMovePhaseFrame += 1;
         fighter.vx *= 0.82;
+        if (skipToFollowThrough) {
+          setSpecialMovePhase(fighter, "follow-through");
+          return;
+        }
+
         if (fighter.specialMovePhaseFrame < pauseFrames) {
           return;
         }
@@ -1070,6 +1278,11 @@ function advanceAttack(
       case "zoom-out":
         fighter.specialMovePhaseFrame += 1;
         fighter.vx *= 0.82;
+        if (skipToFollowThrough) {
+          setSpecialMovePhase(fighter, "follow-through");
+          return;
+        }
+
         if (fighter.specialMovePhaseFrame < zoomOutFrames) {
           return;
         }
@@ -1222,6 +1435,8 @@ function maybeSpawnProjectile(
     lifetimeFrames: projectile.lifetimeFrames,
     persistsOnHit: projectile.persistsOnHit,
     hitIntervalFrames: projectile.hitIntervalFrames,
+    maxHits: projectile.maxHits,
+    hitCount: 0,
     animationFrameDurationFrames: projectile.animationFrameDurationFrames,
     ageFrames: 0,
     x: spawnX,
@@ -1281,7 +1496,7 @@ function getProjectileVerticalMotion(
 
 function updateLocomotion(fighter: FighterRuntimeState, definition: CharacterDefinition, input: InputState) {
   const direction = Number(input.right) - Number(input.left);
-  const movementMultiplier = getOverchargeMovementMultiplier(fighter);
+  const movementMultiplier = getStatusMovementMultiplier(fighter);
 
   if (fighter.grounded && input.up && !fighter.lastInput.up) {
     cancelDash(fighter);
@@ -1371,7 +1586,7 @@ function cancelDash(fighter: FighterRuntimeState) {
 }
 
 function getDashSpeed(fighter: FighterRuntimeState, definition: CharacterDefinition) {
-  return definition.stats.movement.dash.speed * getOverchargeMovementMultiplier(fighter);
+  return definition.stats.movement.dash.speed * getStatusMovementMultiplier(fighter);
 }
 
 export function getDashDurationFrames(definition: CharacterDefinition) {
@@ -1669,12 +1884,16 @@ function resolveHits(
   attackerDef: CharacterDefinition,
   defenderDef: CharacterDefinition,
 ) {
-  if (!attacker.attackId || attacker.attackConnected || state.status !== "fighting") {
+  if (!attacker.attackId || state.status !== "fighting") {
     return;
   }
 
   const move = attackerDef.moves[attacker.attackId];
   if (!move) {
+    return;
+  }
+
+  if (attacker.attackConnected && !move.multiHit) {
     return;
   }
 
@@ -1725,6 +1944,10 @@ function resolveHits(
       gainOverchargeMeter(attacker, getOverchargeMeterGain("block-done", interactionDamage));
       gainOverchargeMeter(defender, getOverchargeMeterGain("block-taken", interactionDamage));
       state.events.push(`${defender.name} blocked ${move.label}`);
+      if (move.finishOnHit) {
+        attacker.vx = 0;
+        finishAttack(attacker);
+      }
       return;
     }
 
@@ -1762,6 +1985,10 @@ function resolveHits(
     gainOverchargeMeter(attacker, getOverchargeMeterGain("hit-done", damage));
     gainOverchargeMeter(defender, getOverchargeMeterGain("hit-taken", damage));
     state.events.push(`${attacker.name} landed ${move.label}`);
+    if (move.finishOnHit) {
+      attacker.vx = 0;
+      finishAttack(attacker);
+    }
     return;
   }
 }
@@ -1777,6 +2004,10 @@ function resolveAttackProjectileClashes(
 
   const move = attackerDef.moves[attacker.attackId];
   if (!move) {
+    return;
+  }
+
+  if (move.phaseThroughProjectiles) {
     return;
   }
 
@@ -1812,6 +2043,17 @@ function resolveAttackProjectileClashes(
       (projectile) => !destroyedProjectileIds.has(projectile.id),
     );
   }
+}
+
+function isPhasingThroughProjectiles(
+  fighter: FighterRuntimeState,
+  definition: CharacterDefinition,
+) {
+  if (fighter.action !== "attack" || !fighter.attackId) {
+    return false;
+  }
+
+  return definition.moves[fighter.attackId]?.phaseThroughProjectiles === true;
 }
 
 function resolveProjectileClashes(state: MatchState) {
@@ -1884,12 +2126,22 @@ function resolveProjectileHits(
     const attackerDef = roster[projectile.ownerFighterId];
     const move = attackerDef?.moves[projectile.moveId];
     const projectileHitbox = toWorldProjectileBox(projectile, projectile.hitbox);
+    if (isPhasingThroughProjectiles(defender, defenderDef)) {
+      survivingProjectiles.push(projectile);
+      continue;
+    }
+
     const hurtboxes = getHurtboxes(defender, defenderDef);
     const collision = hurtboxes.some((hurtbox) => intersects(projectileHitbox, hurtbox));
     const hitIntervalFrames = Math.max(1, projectile.hitIntervalFrames ?? 1);
+    const hasHitsRemaining =
+      projectile.maxHits == null || projectile.hitCount < projectile.maxHits;
     const canInteractThisFrame =
-      !projectile.persistsOnHit ||
-      ((Math.max(0, projectile.ageFrames - 1)) % hitIntervalFrames === 0);
+      (hasHitsRemaining && !projectile.persistsOnHit) ||
+      (
+        hasHitsRemaining &&
+        ((Math.max(0, projectile.ageFrames - 1)) % hitIntervalFrames === 0)
+      );
 
     if (!collision) {
       survivingProjectiles.push(projectile);
@@ -1928,6 +2180,7 @@ function resolveProjectileHits(
       if (move) {
         state.events.push(`${defender.name} blocked ${move.label}`);
       }
+      projectile.hitCount += 1;
       if (projectile.persistsOnHit && defender.health > 0) {
         survivingProjectiles.push(projectile);
       }
@@ -1969,6 +2222,7 @@ function resolveProjectileHits(
     if (move) {
       state.events.push(`${attacker.name} landed ${move.label}`);
     }
+    projectile.hitCount += 1;
     if (projectile.persistsOnHit && defender.health > 0) {
       survivingProjectiles.push(projectile);
     }

@@ -3,7 +3,17 @@ export type Facing = -1 | 1;
 export type Button = "punch" | "kick" | "special";
 export type FighterAction = "idle" | "walk" | "dash" | "jump" | "guard" | "attack" | "hit" | "ko";
 export type SpecialMovePhase = "build-up" | "landing-hold" | "pause" | "zoom-out" | "follow-through";
-export type MoveAnimationStance = "attack1" | "attack2" | "special";
+export type ChannelSpecialMode = "heal" | "drain";
+export type MoveAnimationStance =
+  | "attack1"
+  | "attack1b"
+  | "attack1c"
+  | "attack2"
+  | "attack3"
+  | "special"
+  | "special-a"
+  | "special-b"
+  | "special-c";
 export type SpriteAnimationStance =
   | "idle"
   | "walk"
@@ -14,6 +24,7 @@ export type SpriteAnimationStance =
   | "ko"
   | "win"
   | MoveAnimationStance
+  | "special-wind-up"
   | "special-pose"
   | "special-loop";
 export type JuggleState = "airborne" | "recovery";
@@ -55,6 +66,9 @@ export interface MoveRelocationDefinition {
   startFrame: number;
   endFrame: number;
   distanceXRatio: number;
+  fromDistanceXRatio?: number;
+  distanceY?: number;
+  fromDistanceY?: number;
 }
 
 export type MoveHitboxAnchor = "fighter" | "attack-origin";
@@ -81,11 +95,37 @@ export interface MoveDefinition {
   rootVelocityX?: number;
   jumpCancelable?: boolean;
   interruptible?: boolean;
+  multiHit?: boolean;
+  phaseThroughProjectiles?: boolean;
+  finishOnHit?: boolean;
+  startsReady?: boolean;
+  /**
+   * Heal the attacker once when the move starts.
+   * Ratio is applied to maxHealth (e.g. 0.125 = 1/8).
+   */
+  selfHealRatio?: number;
+  healAura?: "holy" | "leaf";
+  channelSpecial?: {
+    durationFrames: number;
+    initialMode: ChannelSpecialMode;
+    toggleModes?: ChannelSpecialMode[];
+    tickIntervalFrames?: number;
+    healPerSecondRatio?: number;
+    damagePerSecondRatio?: number;
+    slowMultiplier?: number;
+  };
+  /**
+   * If true, the attacker is fully invulnerable for the duration of the move.
+   */
+  grantsInvulnerability?: boolean;
   animationStance?: MoveAnimationStance;
   followUpMoveId?: string;
+  followUpWindowFrames?: number;
+  followUpExpireCooldownSeconds?: number;
   specialSequence?: SpecialSequenceDefinition;
   projectile?: ProjectileDefinition;
   relocation?: MoveRelocationDefinition;
+  relocations?: MoveRelocationDefinition[];
   hitboxAnchor?: MoveHitboxAnchor;
   effectAnimation?: MoveEffectDefinition;
   frameBoxes?: Record<number, FrameBoxes>;
@@ -94,13 +134,14 @@ export interface MoveDefinition {
 export interface SpecialSequenceDefinition {
   buildUpFrames: number;
   animationBuildUpFrames?: number;
-  buildUpAnimation?: "special" | "special-pose";
+  buildUpAnimation?: "special" | "special-pose" | "special-wind-up";
   animationMode?: "segmented" | "loop";
   loopFrameDuration?: number;
   channelMoveSpeed?: number;
   hoverHeight?: number;
   pauseFrames?: number;
   zoomOutFrames?: number;
+  skipToFollowThroughOnSpecialInput?: boolean;
   completeAnimationDuringZoomOut?: boolean;
   holdUntilGroundedAfterBuildUp?: boolean;
   freezeOpponentDuringBuildUp?: boolean;
@@ -117,6 +158,7 @@ export interface ProjectileDefinition {
   lifetimeFrames?: number;
   persistsOnHit?: boolean;
   hitIntervalFrames?: number;
+  maxHits?: number;
   shotCount?: number;
   shotIntervalFrames?: number;
   shotHitboxes?: HitBox[];
@@ -196,6 +238,10 @@ export interface CharacterDefinition {
     renderHeight?: number;
     assetRoot?: string;
     stanceAliases?: Partial<Record<SpriteAnimationStance, string[]>>;
+    stanceFrameDurations?: Partial<Record<SpriteAnimationStance, number>>;
+    stanceRenderOffsets?: Partial<
+      Record<SpriteAnimationStance, { x?: number; y?: number }>
+    >;
   };
   standingBoxes: FrameBoxes;
   jumpingBoxes: FrameBoxes;
@@ -226,16 +272,23 @@ export interface FighterRuntimeState {
   attackInputDirection: Facing;
   attackStartFacing: Facing;
   attackStartX: number;
+  attackStartY: number;
   specialMovePhase: SpecialMovePhase | null;
   specialMovePhaseFrame: number;
+  channelSpecialMode: ChannelSpecialMode | null;
   attackConnected: boolean;
   pendingFollowUpMoveId: string | null;
+  pendingFollowUpFrames: number | null;
+  pendingFollowUpSourceMoveId: string | null;
+  pendingFollowUpExpireCooldownFrames: number;
   frozenFrames: number;
   frozenAnimationActionFrames: number;
   frozenAnimationMatchFrame: number;
   hitstun: number;
   juggleState: JuggleState | null;
   invulnerableFrames: number;
+  slowFrames: number;
+  slowMultiplier: number;
   comboCount: number;
   comboOwnerSlot: PlayerSlot | null;
   comboTimerFrames: number;
@@ -264,6 +317,8 @@ export interface ProjectileRuntimeState {
   lifetimeFrames?: number;
   persistsOnHit?: boolean;
   hitIntervalFrames?: number;
+  maxHits?: number;
+  hitCount: number;
   animationFrameDurationFrames?: number;
   ageFrames: number;
   x: number;

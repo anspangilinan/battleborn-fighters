@@ -769,6 +769,108 @@ test("fighters take damage when an attack overlaps hurtboxes", () => {
   assert.ok(state.events.some((entry) => entry.includes("landed Punch")));
 });
 
+test("multi-hit melee attacks can connect on multiple authored hit frames", () => {
+  const multiHitFighter: CharacterDefinition = {
+    ...fighter,
+    id: "multi-hit-fighter",
+    moves: {
+      ...fighter.moves,
+      kick: {
+        id: "kick",
+        label: "Double Kick",
+        button: "kick",
+        startup: 1,
+        active: 3,
+        recovery: 4,
+        multiHit: true,
+        frameBoxes: {
+          1: {
+            hitboxes: [{ x: 12, y: -72, width: 48, height: 18, damage: 30, hitstun: 8, knockbackX: 0 }],
+          },
+          3: {
+            hitboxes: [{ x: 12, y: -72, width: 48, height: 18, damage: 35, hitstun: 8, knockbackX: 0 }],
+          },
+        },
+      },
+    },
+  };
+  const roster = {
+    [multiHitFighter.id]: multiHitFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, multiHitFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 345;
+
+  for (let index = 0; index < 5; index += 1) {
+    state = stepMatch(
+      state,
+      roster,
+      index === 0 ? input({ kick: true }) : EMPTY_INPUT,
+      EMPTY_INPUT,
+    );
+  }
+
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 65);
+  assert.equal(state.fighters[1].comboCount, 2);
+});
+
+test("finishOnHit travelling attacks stop when they connect", () => {
+  const travellingFighter: CharacterDefinition = {
+    ...fighter,
+    id: "travelling-fighter",
+    moves: {
+      ...fighter.moves,
+      kick: {
+        id: "kick",
+        label: "Travelling Kick",
+        button: "kick",
+        startup: 1,
+        active: 12,
+        recovery: 6,
+        rootVelocityX: 12,
+        finishOnHit: true,
+        frameBoxes: Object.fromEntries(Array.from({ length: 12 }, (_, index) => [
+          index + 1,
+          {
+            hitboxes: [
+              { x: 12, y: -72, width: 34, height: 18, damage: 70, hitstun: 10, knockbackX: 7 },
+            ],
+          },
+        ])),
+      },
+    },
+  };
+  const roster = {
+    [travellingFighter.id]: travellingFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, travellingFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 390;
+
+  for (let index = 0; index < 12; index += 1) {
+    state = stepMatch(
+      state,
+      roster,
+      index === 0 ? input({ kick: true }) : EMPTY_INPUT,
+      EMPTY_INPUT,
+    );
+    if (state.events.some((entry) => entry.includes("landed Travelling Kick"))) {
+      break;
+    }
+  }
+
+  assert.equal(state.fighters[0].attackId, null);
+  assert.equal(state.fighters[0].vx, 0);
+  assert.equal(state.fighters[1].health, fighter.stats.maxHealth - 70);
+  assert.ok(state.fighters[0].x < state.fighters[1].x);
+});
+
 test("guarding a melee hit applies configured chip damage and no hitstun", () => {
   const roster = {
     [extendedRangeFighter.id]: extendedRangeFighter,
@@ -1099,6 +1201,52 @@ test("specials start on half cooldown and are unavailable immediately", () => {
   );
 
   assert.equal(state.fighters[0].attackId, "special");
+});
+
+test("startsReady self-heal specials can fire immediately and grant invulnerability", () => {
+  const healer: CharacterDefinition = {
+    ...fighter,
+    id: "self-heal-fighter",
+    name: "Self Heal Fighter",
+    moves: {
+      ...fighter.moves,
+      special: {
+        id: "special",
+        label: "Heal",
+        button: "special",
+        startup: 4,
+        active: 1,
+        recovery: 8,
+        cooldownSeconds: 6,
+        startsReady: true,
+        selfHealRatio: 0.125,
+        grantsInvulnerability: true,
+      },
+    },
+  };
+  const roster = {
+    [healer.id]: healer,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, healer.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].health = 700;
+  state.fighters[0].recoverableHealth = 350;
+
+  assert.equal(state.fighters[0].moveCooldownFrames.special, 0);
+
+  state = stepMatch(
+    state,
+    roster,
+    input({ special: true }),
+    input({ punch: true }),
+  );
+
+  assert.equal(state.fighters[0].attackId, "special");
+  assert.equal(state.fighters[0].health, 825);
+  assert.equal(state.fighters[0].recoverableHealth, 175);
+  assert.ok(state.fighters[0].invulnerableFrames > 0);
 });
 
 test("channeling specials allow horizontal drift without changing projectile direction", () => {
@@ -1941,6 +2089,7 @@ test("tier one projectiles can be broken by attacks", () => {
       sprite: "crossbow-bolt",
       tier: 1,
       ageFrames: 0,
+      hitCount: 0,
       x: 440,
       y: 355,
       vx: 0,
@@ -1971,6 +2120,74 @@ test("tier one projectiles can be broken by attacks", () => {
   assert.equal(state.fighters[1].health, fighter.stats.maxHealth);
 });
 
+test("projectile phase-through attacks ignore projectile hits without destroying them", () => {
+  const phasingFighter: CharacterDefinition = {
+    ...fighter,
+    id: "projectile-phasing-fighter",
+    moves: {
+      ...fighter.moves,
+      kick: {
+        ...fighter.moves.kick,
+        phaseThroughProjectiles: true,
+        relocation: {
+          startFrame: 3,
+          endFrame: 5,
+          distanceXRatio: 0.2,
+        },
+        hitboxAnchor: "attack-origin",
+      },
+    },
+  };
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [phasingFighter.id]: phasingFighter,
+  };
+  let state = createMatchState(roster, projectileFighter.id, phasingFighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 460;
+  state.projectiles = [
+    {
+      id: 1,
+      ownerSlot: 1,
+      ownerFighterId: projectileFighter.id,
+      moveId: "punch",
+      sprite: "crossbow-bolt",
+      tier: 1,
+      ageFrames: 0,
+      hitCount: 0,
+      x: 460,
+      y: 355,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      facing: 1,
+      originX: 460,
+      minimumDistance: DEFAULT_CONFIG.width * 0.8,
+      hitbox: {
+        x: -18,
+        y: -4,
+        width: 36,
+        height: 8,
+        damage: 55,
+        hitstun: 9,
+        knockbackX: 6,
+      },
+    },
+  ];
+  state.nextProjectileId = 2;
+  state.fighters[1].attackId = "kick";
+  state.fighters[1].attackFrame = 2;
+  state.fighters[1].action = "attack";
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.projectiles.length, 1);
+  assert.equal(state.fighters[1].health, phasingFighter.stats.maxHealth);
+  assert.equal(state.fighters[1].action, "attack");
+});
+
 test("higher-tier projectiles break lower-tier projectiles on contact", () => {
   const roster = {
     [projectileFighter.id]: projectileFighter,
@@ -1992,6 +2209,7 @@ test("higher-tier projectiles break lower-tier projectiles on contact", () => {
       sprite: "crossbow-bolt",
       tier: 1,
       ageFrames: 0,
+      hitCount: 0,
       x: 450,
       y: 340,
       vx: 0,
@@ -2018,6 +2236,7 @@ test("higher-tier projectiles break lower-tier projectiles on contact", () => {
       sprite: "crossbow-bolt",
       tier: 2,
       ageFrames: 0,
+      hitCount: 0,
       x: 450,
       y: 340,
       vx: 0,
