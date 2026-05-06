@@ -2587,6 +2587,19 @@ body.fight-route-active .app-content {
     0 0 0 3px rgba(34, 30, 25, 0.32);
 }
 
+.fight-control-button-followup-ready {
+  opacity: 1;
+  border-color: rgba(120, 248, 255, 0.92);
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 255, 236, 0.9), rgba(255, 255, 236, 0) 46%),
+    linear-gradient(180deg, rgba(118, 245, 255, 0.98), rgba(88, 214, 162, 0.96));
+  box-shadow:
+    inset 0 0 0 3px rgba(235, 255, 252, 0.88),
+    0 0 0 3px rgba(20, 52, 55, 0.42),
+    0 0 18px rgba(88, 234, 255, 0.28),
+    0 0 28px rgba(134, 255, 189, 0.2);
+}
+
 .fight-control-button-overcharge.fight-control-button-active {
   background:
     radial-gradient(circle at 50% 32%, rgba(255, 255, 236, 0.98), rgba(255, 255, 236, 0) 48%),

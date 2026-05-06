@@ -9,6 +9,7 @@ import {
 type VisualAwareFighter = Pick<CharacterDefinition, "id" | "name" | "sprites">;
 
 const MAX_FRAME_SCAN = 24;
+const MAX_CONSECUTIVE_MISSING_FRAMES_AFTER_START = 2;
 const imageAvailabilityPromiseCache = new Map<string, Promise<boolean>>();
 const stanceFramePromiseCache = new Map<string, Promise<string[]>>();
 const portraitSourcePromiseCache = new Map<string, Promise<string | null>>();
@@ -65,12 +66,25 @@ export function loadSequentialFrameSet(assetBasePath: string) {
 
     for (const getFrameName of namingStrategies) {
       const discoveredFrames: string[] = [];
+      let consecutiveMissingFrames = 0;
       for (let index = 0; index < MAX_FRAME_SCAN; index += 1) {
         const src = `${normalizedBasePath}${getFrameName(index)}`;
         const exists = await preloadImage(src);
         if (!exists) {
-          break;
+          if (discoveredFrames.length === 0) {
+            break;
+          }
+
+          consecutiveMissingFrames += 1;
+          if (
+            consecutiveMissingFrames >=
+            MAX_CONSECUTIVE_MISSING_FRAMES_AFTER_START
+          ) {
+            break;
+          }
+          continue;
         }
+        consecutiveMissingFrames = 0;
         discoveredFrames.push(src);
       }
 

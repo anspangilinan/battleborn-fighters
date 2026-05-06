@@ -73,6 +73,7 @@ type ControlInputKey = keyof Pick<
 type AttackInputKey = keyof Pick<InputState, 'punch' | 'kick' | 'special'>;
 type AttackCooldownDisplay = {
   cooling: boolean;
+  followUpReady: boolean;
   remainingFrames: number;
   remainingLabel: string;
   remainingRatio: number;
@@ -265,12 +266,24 @@ const fightAnimationStances = [
   'ko',
   'win',
   'attack1',
+  'attack1b',
+  'attack1c',
   'attack2',
+  'attack3',
   'special',
+  'special-a',
+  'special-b',
+  'special-c',
+  'special-wind-up',
   'special-pose',
   'special-loop',
 ] as const;
 type FightAnimationStance = (typeof fightAnimationStances)[number];
+type SpecialBuildUpAnimation = {
+  frameSources: string[];
+  stance: FightAnimationStance;
+  usesDedicatedPose: boolean;
+};
 const KO_SLOWDOWN_DURATION_MS = 260;
 const KO_SLOWDOWN_TIME_SCALE = 1 / 3;
 const KO_ANNOUNCEMENT_DURATION_MS = 2000;
@@ -286,6 +299,11 @@ const fightAnnouncementImageSources = {
   versus: `${fightAnnouncementAssetRoot}/versus.png`,
   youLose: `${fightAnnouncementAssetRoot}/you-lose.png`,
   youWin: `${fightAnnouncementAssetRoot}/you-win.png`,
+} as const;
+
+const fightAnnouncementTextureKeys = {
+  youLose: 'fight-announcement-you-lose',
+  youWin: 'fight-announcement-you-win',
 } as const;
 const WIN_COMPANION_RENDER_HEIGHT = 55;
 const WIN_COMPANION_WALK_FRAME_DURATION = 6;
@@ -358,6 +376,7 @@ const attackControls: Array<Array<{ key: ControlInputKey; label: string }>> = [
 const attackControlKeys: AttackInputKey[] = ['punch', 'kick', 'special'];
 const zeroAttackCooldownDisplay: AttackCooldownDisplay = {
   cooling: false,
+  followUpReady: false,
   remainingFrames: 0,
   remainingLabel: '',
   remainingRatio: 0,
@@ -830,6 +849,19 @@ function getDesiredAnimationStance(
   return 'idle';
 }
 
+function getFighterStanceRenderOffset(
+  definition: CharacterDefinition,
+  stance: FightAnimationStance,
+  facing: Facing,
+) {
+  const offset = definition.sprites.stanceRenderOffsets?.[stance];
+
+  return {
+    x: (offset?.x ?? 0) * facing,
+    y: offset?.y ?? 0,
+  };
+}
+
 function getRoundWinnerSlot(state: MatchState) {
   if (state.status === 'match-over') {
     return state.winner;
@@ -926,17 +958,34 @@ function isSpecialCinematicPhase(phase: MatchState['fighters'][number]['specialM
 function getSpecialBuildUpAnimation(
   manifest: FighterAssetManifest | undefined,
   move: CharacterDefinition['moves'][string],
-) {
+): SpecialBuildUpAnimation {
+  const specialWindUpSources = manifest?.stanceSources['special-wind-up'] ?? [];
+  if (
+    move.specialSequence?.buildUpAnimation === 'special-wind-up' &&
+    specialWindUpSources.length > 0
+  ) {
+    return {
+      frameSources: specialWindUpSources,
+      stance: 'special-wind-up',
+      usesDedicatedPose: true,
+    };
+  }
+
   const specialPoseSources = manifest?.stanceSources['special-pose'] ?? [];
   if (
     move.specialSequence?.buildUpAnimation === 'special-pose' &&
     specialPoseSources.length > 0
   ) {
-    return { frameSources: specialPoseSources, usesDedicatedPose: true };
+    return {
+      frameSources: specialPoseSources,
+      stance: 'special-pose',
+      usesDedicatedPose: true,
+    };
   }
 
   return {
     frameSources: manifest?.stanceSources.special ?? [],
+    stance: 'special',
     usesDedicatedPose: false,
   };
 }
@@ -982,6 +1031,13 @@ function getLoopingAnimationFrameIndex(
   return Math.floor(actionFrames / Math.max(1, loopFrameDuration)) % frameCount;
 }
 
+function getStanceAnimationFrameDuration(
+  definition: CharacterDefinition,
+  stance: FightAnimationStance,
+) {
+  return Math.max(1, definition.sprites.stanceFrameDurations?.[stance] ?? 1);
+}
+
 function getFrozenAdjustedActionFrames(
   fighter: MatchState['fighters'][number],
   actionFrames: number,
@@ -1002,7 +1058,9 @@ function getFrozenAdjustedMatchFrame(
 
 function getSpecialBuildUpFrameIndex(
   fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
   move: CharacterDefinition['moves'][string],
+  stance: FightAnimationStance,
   frameCount: number,
   usesDedicatedPose: boolean,
 ) {
@@ -1048,6 +1106,14 @@ function getSpecialBuildUpFrameIndex(
       getFrozenAdjustedActionFrames(fighter, fighter.actionFrames),
       frameCount,
       specialSequence.loopFrameDuration ?? 4,
+    );
+  }
+
+  const frameDuration = getStanceAnimationFrameDuration(definition, stance);
+  if (usesDedicatedPose && frameDuration > 1) {
+    return Math.min(
+      lastBuildUpFrameIndex,
+      Math.floor(Math.max(0, fighter.attackFrame) / frameDuration),
     );
   }
 
@@ -1170,6 +1236,16 @@ function getSpecialLoopAnimationFrameIndex(
   const loopFramesElapsed = fighter.specialMovePhase === 'follow-through'
     ? Math.max(0, fighter.attackFrame - buildUpDuration)
     : Math.max(0, fighter.actionFrames);
+
+  if (move.specialSequence?.animationMode !== 'loop') {
+    return Math.min(
+      frameCount - 1,
+      Math.floor(
+        loopFramesElapsed /
+          getStanceAnimationFrameDuration(definition, 'special'),
+      ),
+    );
+  }
 
   return getLoopingAnimationFrameIndex(
     getFrozenAdjustedActionFrames(fighter, loopFramesElapsed),
@@ -1774,6 +1850,78 @@ function renderOverchargeAura(
       0.28 + pulse * 0.18,
       matchFrame * 0.1,
     );
+  }
+}
+
+function renderHolyHealAura(
+  graphics: any,
+  fighter: MatchState['fighters'][number],
+  definition: CharacterDefinition,
+  matchFrame: number,
+  layer: 'back' | 'front',
+  combatOffsetY: number,
+  style: 'holy' | 'leaf' = 'holy',
+) {
+  const visualLift =
+    getDashVisualLift(fighter, definition) +
+    getSpecialHoverVisualLift(fighter, definition);
+  const baseX = fighter.x;
+  const baseY = fighter.y + 6 - visualLift + combatOffsetY;
+  const renderHeight = definition.sprites.renderHeight ?? defaultFighterRenderHeight;
+  const progress = Math.min(1, fighter.actionFrames / 18);
+  const pulse = 0.5 + 0.5 * Math.sin(matchFrame * 0.22 + fighter.slot * 1.4);
+  const centerY = baseY - renderHeight * 0.54;
+  const auraWidth = renderHeight * (0.56 + progress * 0.2 + pulse * 0.04);
+  const auraHeight = renderHeight * (0.92 + progress * 0.18 + pulse * 0.06);
+  const primaryColor = style === 'leaf' ? 0x7cff84 : 0xfff4b8;
+  const secondaryColor = style === 'leaf' ? 0xd8ffd2 : 0xe8fff4;
+  const strokeColor = style === 'leaf' ? 0xb9ff8e : 0xfff9d8;
+  const sparkleColor = style === 'leaf' ? 0xa8ff6a : 0xffffff;
+
+  if (layer === 'back') {
+    graphics.fillStyle(primaryColor, 0.13 + pulse * 0.05);
+    graphics.fillEllipse(baseX, centerY, auraWidth * 1.12, auraHeight);
+    graphics.fillStyle(secondaryColor, 0.08 + pulse * 0.04);
+    graphics.fillEllipse(baseX, centerY - 3, auraWidth * 0.78, auraHeight * 0.7);
+    graphics.lineStyle(2, strokeColor, 0.26 + pulse * 0.08);
+    graphics.strokeEllipse(baseX, centerY, auraWidth * 0.88, auraHeight * 0.76);
+  } else {
+    graphics.lineStyle(1.6, secondaryColor, 0.18 + pulse * 0.08);
+    graphics.strokeEllipse(baseX, centerY - 2, auraWidth * 0.58, auraHeight * 0.52);
+  }
+
+  for (let index = 0; index < 8; index += 1) {
+    const sparkleInFront = index % 2 === 0;
+    if ((layer === 'front') !== sparkleInFront) {
+      continue;
+    }
+
+    const seed = matchFrame * (0.055 + index * 0.004) + fighter.slot * 1.7 + index * 0.9;
+    const orbitX = auraWidth * (0.26 + (index % 3) * 0.08);
+    const orbitY = auraHeight * (0.22 + (index % 2) * 0.09);
+    const sparkleX = baseX + Math.cos(seed * 1.3 + index) * orbitX;
+    const sparkleY = centerY + Math.sin(seed * 1.05 + index * 0.6) * orbitY;
+    const sparkleSize = 4.5 + pulse * 2.5 + (index % 3);
+    const sparkleAlpha = layer === 'front' ? 0.48 : 0.34;
+
+    if (style === 'leaf') {
+      graphics.fillStyle(sparkleColor, sparkleAlpha * 0.75);
+      graphics.fillEllipse(sparkleX, sparkleY, sparkleSize * 1.65, sparkleSize * 0.82);
+      graphics.lineStyle(1, 0xf4ffe0, sparkleAlpha * 0.42);
+      graphics.beginPath();
+      graphics.moveTo(sparkleX - sparkleSize * 0.72, sparkleY);
+      graphics.lineTo(sparkleX + sparkleSize * 0.72, sparkleY);
+      graphics.strokePath();
+    } else {
+      renderOverchargeSparkle(
+        graphics,
+        sparkleX,
+        sparkleY,
+        sparkleSize,
+        sparkleAlpha,
+        seed * 1.8,
+      );
+    }
   }
 }
 
@@ -3005,6 +3153,7 @@ function restoreTrainingInfiniteHealthState(
   fighter.attackFrame = 0;
   fighter.specialMovePhase = null;
   fighter.specialMovePhaseFrame = 0;
+  fighter.channelSpecialMode = null;
   fighter.attackConnected = false;
   fighter.pendingFollowUpMoveId = null;
   fighter.frozenFrames = 0;
@@ -3097,6 +3246,7 @@ export function FightScene(props: FightSceneProps) {
   const [isFullscreenSupported, setIsFullscreenSupported] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playerSlot, setPlayerSlot] = useState<1 | 2>(1);
+  const playerSlotRef = useRef<1 | 2>(1);
   const [trainingOpponentMode, setTrainingOpponentMode] =
     useState<TrainingOpponentMode>('idle');
   const [trainingInfiniteHealth, setTrainingInfiniteHealth] = useState(false);
@@ -3129,6 +3279,10 @@ export function FightScene(props: FightSceneProps) {
 
     return fighter;
   }, [props.opponentId, roster]);
+
+  useEffect(() => {
+    playerSlotRef.current = playerSlot;
+  }, [playerSlot]);
   const fighterDefinition = useMemo(() => {
     const fighter = roster[props.fighterId];
     if (!fighter) {
@@ -3212,18 +3366,29 @@ export function FightScene(props: FightSceneProps) {
     () =>
       Object.fromEntries(
         attackControlKeys.map((key) => {
-          const move = controlledFighterDefinition.moves[key];
+          const pendingMove = controlledFighterRuntime?.pendingFollowUpMoveId
+            ? controlledFighterDefinition.moves[
+                controlledFighterRuntime.pendingFollowUpMoveId
+              ]
+            : null;
+          const move = pendingMove?.button === key
+            ? pendingMove
+            : controlledFighterDefinition.moves[key];
           const totalCooldownFrames = move ? getMoveCooldownFrames(move) : 0;
           const remainingFrames = move
             ? controlledFighterRuntime?.moveCooldownFrames[move.id] ?? 0
             : 0;
           const cooldownDisplay: AttackCooldownDisplay = {
             cooling: remainingFrames > 0,
+            followUpReady: pendingMove?.button === key && remainingFrames <= 0,
             remainingFrames,
             remainingLabel: formatCooldownLabel(remainingFrames),
             remainingRatio:
-              totalCooldownFrames > 0
-                ? Math.min(1, remainingFrames / totalCooldownFrames)
+              Math.max(totalCooldownFrames, remainingFrames) > 0
+                ? Math.min(
+                    1,
+                    remainingFrames / Math.max(totalCooldownFrames, remainingFrames),
+                  )
                 : 0,
           };
 
@@ -3366,7 +3531,9 @@ export function FightScene(props: FightSceneProps) {
     const buildUpAnimation = getSpecialBuildUpAnimation(manifest, activeSpecial.move);
     const frameIndex = getSpecialBuildUpFrameIndex(
       activeSpecial.fighter,
+      activeSpecial.definition,
       activeSpecial.move,
+      buildUpAnimation.stance,
       buildUpAnimation.frameSources.length,
       buildUpAnimation.usesDedicatedPose,
     );
@@ -3998,6 +4165,7 @@ export function FightScene(props: FightSceneProps) {
           InstanceType<typeof Phaser.GameObjects.Image>
         >();
         private fighterBaselineFrameHeights = new Map<string, number>();
+        private resultAnnouncementSprite?: InstanceType<typeof Phaser.GameObjects.Image>;
         private projectileSprites = new Map<
           number,
           InstanceType<typeof Phaser.GameObjects.Image>
@@ -4008,6 +4176,7 @@ export function FightScene(props: FightSceneProps) {
         >();
         private simulationAccumulatorMs = 0;
         private koSlowdownRemainingMs = 0;
+        private lastSpecialImpactShakeKey = '';
 
         private startKoDramaticBeat() {
           this.koSlowdownRemainingMs = KO_SLOWDOWN_DURATION_MS;
@@ -4109,6 +4278,14 @@ export function FightScene(props: FightSceneProps) {
             this,
             projectileAssetSourcesRef.current,
             false,
+          );
+          this.load.image(
+            fightAnnouncementTextureKeys.youWin,
+            fightAnnouncementImageSources.youWin,
+          );
+          this.load.image(
+            fightAnnouncementTextureKeys.youLose,
+            fightAnnouncementImageSources.youLose,
           );
         }
 
@@ -4271,6 +4448,9 @@ export function FightScene(props: FightSceneProps) {
           this.overchargeFrontGraphics.clear();
           this.projectileGraphics.clear();
           this.fighterCompanionSprites.forEach((sprite) => sprite.setVisible(false));
+          if (this.resultAnnouncementSprite) {
+            this.resultAnnouncementSprite.setVisible(false);
+          }
           if (!hasArenaBackground) {
             this.backgroundGraphics.fillGradientStyle(
               0x13233a,
@@ -4323,8 +4503,57 @@ export function FightScene(props: FightSceneProps) {
             );
           }
 
+          const activePlayerSlot = playerSlotRef.current ?? 1;
+          const roundResultAnnouncement = getRoundResultAnnouncement(
+            state,
+            activePlayerSlot,
+          );
+          if (
+            roundResultAnnouncement?.phase === 'result' &&
+            (roundResultAnnouncement.title === 'You Win' ||
+              roundResultAnnouncement.title === 'You Lose')
+          ) {
+            const textureKey =
+              roundResultAnnouncement.title === 'You Win'
+                ? fightAnnouncementTextureKeys.youWin
+                : fightAnnouncementTextureKeys.youLose;
+            const sprite =
+              this.resultAnnouncementSprite ??
+              this.add.image(
+                DEFAULT_CONFIG.width / 2,
+                DEFAULT_CONFIG.height / 2,
+                textureKey,
+              );
+            sprite.setTexture(textureKey);
+            sprite.setVisible(true);
+            sprite.setDepth(2.6);
+            sprite.setOrigin(0.5, 0.5);
+            sprite.setAlpha(1);
+            // Match yesterday's DOM overlay sizing:
+            // `.fight-countdown-phase-result .fight-countdown-title-image { width: clamp(220px, 32cqw, 340px); }`
+            // The fight scene uses DEFAULT_CONFIG.width as its internal resolution.
+            const targetWidth = Math.min(
+              340,
+              Math.max(220, DEFAULT_CONFIG.width * 0.32),
+            );
+            sprite.setScale(targetWidth / Math.max(1, sprite.width));
+            this.resultAnnouncementSprite = sprite;
+          }
+
           state.fighters.forEach((fighter) => {
             const definition = roster[fighter.fighterId];
+            if (
+              fighter.fighterId === 'distorted' &&
+              fighter.attackId === 'special' &&
+              fighter.specialMovePhase === 'follow-through' &&
+              [20, 21, 22].includes(fighter.attackFrame)
+            ) {
+              const shakeKey = `${fighter.slot}:${fighter.attackFrame}:${state.frame}`;
+              if (this.lastSpecialImpactShakeKey !== shakeKey) {
+                this.cameras.main.shake(90, 0.0025);
+                this.lastSpecialImpactShakeKey = shakeKey;
+              }
+            }
             const manifest = fighterAssetManifestsRef.current[fighter.fighterId];
             const companionState = getWinCompanionState(
               state,
@@ -4393,11 +4622,20 @@ export function FightScene(props: FightSceneProps) {
             );
 
             if (activeStance && manifest) {
+              const desiredStance = getDesiredAnimationStance(
+                state,
+                fighter,
+                definition,
+              );
+              const frameStance =
+                activeStance === 'special' && desiredStance === 'special-loop'
+                  ? 'special-loop'
+                  : activeStance;
               const frames = manifest.stanceSources[activeStance];
               const frameIndex = getAnimationFrameIndex(
                 fighter,
                 definition,
-                activeStance,
+                frameStance,
                 frames.length,
                 state.frame,
               );
@@ -4474,14 +4712,25 @@ export function FightScene(props: FightSceneProps) {
                 fighter.overchargeActivationFrames > 0
                   ? 1 + (1 - overchargeActivationProgress) * 0.08
                   : 1;
+              const stanceRenderOffset = getFighterStanceRenderOffset(
+                definition,
+                activeStance,
+                fighter.facing,
+              );
 
               fighterSprite.setTexture(textureKey);
               fighterSprite.setVisible(true);
-              fighterSprite.setDepth(3);
+              // Ensure defeated fighters (KO stance) render behind the opponent,
+              // regardless of player slot ordering.
+              fighterSprite.setDepth(fighter.action === 'ko' ? 2.8 : 3);
               fighterSprite.setOrigin(0.5, 1);
               fighterSprite.setPosition(
-                fighter.x,
-                fighter.y + 6 - visualLift + selectedArena.combatOffsetY,
+                fighter.x + stanceRenderOffset.x,
+                fighter.y +
+                  6 -
+                  visualLift +
+                  selectedArena.combatOffsetY +
+                  stanceRenderOffset.y,
               );
               fighterSprite.setFlipX(fighter.facing < 0);
               fighterSprite.setScale(
@@ -4506,6 +4755,17 @@ export function FightScene(props: FightSceneProps) {
                 'back',
                 selectedArena.combatOffsetY,
               );
+              if (activeMove?.healAura) {
+                renderHolyHealAura(
+                  this.overchargeBackGraphics,
+                  fighter,
+                  definition,
+                  state.frame,
+                  'back',
+                  selectedArena.combatOffsetY,
+                  activeMove.healAura ?? 'holy',
+                );
+              }
               renderGuardOverlay(
                 this.fighterGraphics,
                 fighter,
@@ -4520,6 +4780,17 @@ export function FightScene(props: FightSceneProps) {
                 'front',
                 selectedArena.combatOffsetY,
               );
+              if (activeMove?.healAura) {
+                renderHolyHealAura(
+                  this.overchargeFrontGraphics,
+                  fighter,
+                  definition,
+                  state.frame,
+                  'front',
+                  selectedArena.combatOffsetY,
+                  activeMove.healAura ?? 'holy',
+                );
+              }
             } else {
               existingSprite?.setVisible(false);
               renderOverchargeAura(
@@ -4793,6 +5064,9 @@ export function FightScene(props: FightSceneProps) {
   const fightAnnouncement =
     koAnnouncement ?? countdownAnnouncement ?? roundResultAnnouncement;
   const isMatchLoaded = !isSceneBooting && !matchLoadError;
+  const shouldRenderDomAnnouncement = Boolean(
+    fightAnnouncement && fightAnnouncement.phase !== 'result',
+  );
 
   useEffect(() => {
     document.body.classList.add('fight-route-active');
@@ -5121,7 +5395,7 @@ export function FightScene(props: FightSceneProps) {
           </div>
         ) : null}
       </div>
-      {isMatchLoaded && fightAnnouncement ? (
+      {isMatchLoaded && shouldRenderDomAnnouncement && fightAnnouncement ? (
         <div
           className={`fight-countdown-overlay fight-countdown-phase-${fightAnnouncement.phase}`}
           aria-live="polite"
@@ -5271,6 +5545,9 @@ export function FightScene(props: FightSceneProps) {
                   const coolingClass = cooldown.cooling
                     ? ' fight-control-button-cooling'
                     : '';
+                  const followUpReadyClass = cooldown.followUpReady
+                    ? ' fight-control-button-followup-ready'
+                    : '';
                   const activeClass = visualInput[control.key]
                     ? ' fight-control-button-active'
                     : '';
@@ -5280,7 +5557,7 @@ export function FightScene(props: FightSceneProps) {
                   const attackButton = (
                     <button
                       type="button"
-                      className={`fight-control-button fight-control-button-action${activeClass}${coolingClass}`}
+                      className={`fight-control-button fight-control-button-action${activeClass}${coolingClass}${followUpReadyClass}`}
                       aria-disabled={cooldown.cooling}
                       style={cooldownStyle}
                       onPointerDown={(event) => {

@@ -20,8 +20,15 @@ const animationStances = [
   "ko",
   "win",
   "attack1",
+  "attack1b",
+  "attack1c",
   "attack2",
+  "attack3",
   "special",
+  "special-a",
+  "special-b",
+  "special-c",
+  "special-wind-up",
   "special-pose",
 ] as const;
 type AnimationStanceId = (typeof animationStances)[number];
@@ -36,8 +43,15 @@ const previewOptions = [
   { id: "ko", label: "KO" },
   { id: "win", label: "Win" },
   { id: "attack1", label: "Attack 1" },
+  { id: "attack1b", label: "Attack 1B" },
+  { id: "attack1c", label: "Attack 1C" },
   { id: "attack2", label: "Attack 2" },
+  { id: "attack3", label: "Attack 3" },
   { id: "special", label: "Special" },
+  { id: "special-a", label: "Special A" },
+  { id: "special-b", label: "Special B" },
+  { id: "special-c", label: "Special C" },
+  { id: "special-wind-up", label: "Special Wind-Up" },
   { id: "special-pose", label: "Special Pose" },
   { id: "special-sequence", label: "Special Seq" },
 ] as const;
@@ -240,6 +254,22 @@ function getCurrentFrameSource(frameSources: string[], currentFrame: number) {
   return frameSources[currentFrame % frameSources.length];
 }
 
+function getPreviewFrameSource(
+  frameSources: string[],
+  currentFrame: number,
+  previewId: PreviewId,
+) {
+  if (frameSources.length === 0) {
+    return "";
+  }
+
+  if (previewId === "ko") {
+    return frameSources[Math.min(currentFrame, frameSources.length - 1)];
+  }
+
+  return getCurrentFrameSource(frameSources, currentFrame);
+}
+
 export function AnimationLab() {
   const router = useRouter();
   const [selectedFighterIds, setSelectedFighterIds] = useState<string[]>(defaultSelectedFighterIds);
@@ -304,13 +334,19 @@ export function AnimationLab() {
     }
 
     const timer = window.setTimeout(() => {
-      setCurrentFrame((previous) => (previous + 1) % maxFrameCount);
+      setCurrentFrame((previous) => {
+        if (previewId === "ko") {
+          return Math.min(previous + 1, maxFrameCount - 1);
+        }
+
+        return (previous + 1) % maxFrameCount;
+      });
     }, FRAME_DURATION_MS);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [currentFrame, isLoading, maxFrameCount]);
+  }, [currentFrame, isLoading, maxFrameCount, previewId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -416,7 +452,9 @@ export function AnimationLab() {
               const frameSources = frameSourcesByFighter[fighter.id];
               const isFighterLoading = isLoading || typeof frameSources === "undefined";
               const isAnimationMissing = frameSources === null;
-              const currentSource = Array.isArray(frameSources) ? getCurrentFrameSource(frameSources, currentFrame) : "";
+              const currentSource = Array.isArray(frameSources)
+                ? getPreviewFrameSource(frameSources, currentFrame, previewId)
+                : "";
               const renderHeight = fighter.sprites.renderHeight ?? 168;
               const stageHeight = renderHeight + 72;
 
