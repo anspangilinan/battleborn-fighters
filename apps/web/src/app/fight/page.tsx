@@ -49,16 +49,10 @@ export default async function FightPage({ searchParams }: FightPageProps) {
   const masterRoster: FighterRosterMap = isMasterModeEnabled()
     ? { ...publicRoster, ...hiddenFighterRoster }
     : publicRoster;
-  // TEMP: always expose McBalut Anomaly in offline modes for testing,
-  // regardless of MASTER_MODE. Online remains public-roster only.
-  const anomalyId = "mcbalut-anomaly";
-  const anomalyRoster: FighterRosterMap = hiddenFighterRoster[anomalyId]
-    ? { [anomalyId]: hiddenFighterRoster[anomalyId] }
-    : {};
   const playableRoster: FighterRosterMap =
     mode === "online"
       ? publicRoster
-      : { ...masterRoster, ...anomalyRoster };
+      : masterRoster;
   const arcadeRoster: FighterRosterMap =
     hiddenFighterRoster[arcadeFinalBossId]
       ? {
