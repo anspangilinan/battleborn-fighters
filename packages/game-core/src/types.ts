@@ -9,6 +9,7 @@ export type MoveAnimationStance =
   | "attack1a"
   | "attack1b"
   | "attack1c"
+  | "attack1d"
   | "attack2"
   | "attack3"
   | "special"
@@ -125,6 +126,7 @@ export interface MoveDefinition {
   followUpMoveId?: string;
   followUpWindowFrames?: number;
   followUpExpireCooldownSeconds?: number;
+  passThroughOpponent?: boolean;
   specialSequence?: SpecialSequenceDefinition;
   projectile?: ProjectileDefinition;
   relocation?: MoveRelocationDefinition;

@@ -839,7 +839,7 @@ function updateFighter(
   fighter.y += fighter.vy;
 
   if (fighter.attackId && activeMove) {
-    applyMoveRelocation(fighter, activeMove, config);
+    applyMoveRelocation(fighter, activeMove, opponent, opponentDefinition, config);
   }
 
   if (fighter.y >= config.groundY) {
@@ -1178,6 +1178,8 @@ function finishAttack(fighter: FighterRuntimeState) {
 function applyMoveRelocation(
   fighter: FighterRuntimeState,
   move: NonNullable<CharacterDefinition["moves"][string]>,
+  opponent: FighterRuntimeState,
+  opponentDefinition: CharacterDefinition,
   config: MatchConfig,
 ) {
   const relocation = [
@@ -1199,7 +1201,17 @@ function applyMoveRelocation(
     fighter.attackInputDirection * (relocation.fromDistanceXRatio ?? 0) * config.width;
   const targetX = fighter.attackStartX +
     fighter.attackInputDirection * relocation.distanceXRatio * config.width;
-  const clampedTargetX = Math.max(40, Math.min(config.width - 40, targetX));
+  const crossedOpponent =
+    move.passThroughOpponent &&
+    ((startX < opponent.x && targetX > opponent.x) ||
+      (startX > opponent.x && targetX < opponent.x));
+  const behindOpponentX = opponent.x +
+    fighter.attackInputDirection *
+      ((opponentDefinition.stats.pushWidth + 20) * 0.5 + 2);
+  const clampedTargetX = Math.max(
+    40,
+    Math.min(config.width - 40, crossedOpponent ? behindOpponentX : targetX),
+  );
 
   fighter.x = startX + (clampedTargetX - startX) * progress;
 
@@ -1947,6 +1959,18 @@ function resolveHits(
   const hitboxes = getMoveFrameHitboxes(move, attacker.attackFrame);
   const hurtboxes = getHurtboxes(defender, defenderDef);
   const attackFacing = getAttackHitboxFacing(attacker, move);
+  const passThroughOpponent = move.passThroughOpponent ?? false;
+  const pushWidthSum = (attackerDef.stats.pushWidth + defenderDef.stats.pushWidth) * 0.5;
+  const crossedSideX = defender.x + attackFacing * (pushWidthSum + 2);
+
+  function pullBehindOpponent() {
+    if (!passThroughOpponent) {
+      return;
+    }
+
+    attacker.x = crossedSideX;
+    attacker.facing = attacker.x < defender.x ? 1 : -1;
+  }
 
   for (const hitbox of hitboxes) {
     const worldHitbox = toWorldAttackBox(
@@ -1989,6 +2013,7 @@ function resolveHits(
         attacker.vx = 0;
         finishAttack(attacker);
       }
+      pullBehindOpponent();
       return;
     }
 
@@ -2030,6 +2055,7 @@ function resolveHits(
       attacker.vx = 0;
       finishAttack(attacker);
     }
+    pullBehindOpponent();
     return;
   }
 }

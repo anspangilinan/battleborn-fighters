@@ -188,6 +188,7 @@ export const characterSchema = z.object({
       "attack1a",
       "attack1b",
       "attack1c",
+      "attack1d",
       "attack2",
       "attack3",
       "special",
@@ -200,6 +201,7 @@ export const characterSchema = z.object({
     followUpMoveId: z.string().optional(),
     followUpWindowFrames: z.number().int().positive().optional(),
     followUpExpireCooldownSeconds: z.number().nonnegative().optional(),
+    passThroughOpponent: z.boolean().optional(),
     specialSequence: z.object({
       buildUpFrames: z.number().int().positive(),
       animationBuildUpFrames: z.number().int().positive().optional(),
