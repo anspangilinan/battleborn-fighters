@@ -2304,15 +2304,15 @@ const mrsdoc: CharacterDefinition = {
         // Two hits across the duration (frames 2 and ~4).
         hitIntervalFrames: 2,
         maxHits: 2,
-        spriteScale: 2.6,
+        spriteScale: 2,
         // Slow down the beam animation.
         animationFrameDurationFrames: 12,
         // Always land on the enemy.
         spawnAnchor: 'opponent',
         spawnYAnchor: 'ground',
         offsetX: 0,
-        // Slightly above ground so the bottom edge stays visible.
-        offsetY: -175,
+        // Bottom-align the 128px sprite to ground at 2x scale (origin is centered).
+        offsetY: -128,
         speed: 0.001,
         targeting: 'opponent',
         minimumDistanceRatio: 1,
@@ -2321,10 +2321,11 @@ const mrsdoc: CharacterDefinition = {
         rotateToVelocity: false,
         alpha: 0.4,
         hitbox: hitbox({
-          x: -26,
-          y: -120,
-          width: 52,
-          height: 140,
+          // Match the beam's footprint and keep overlap generous.
+          x: -34,
+          y: -128,
+          width: 68,
+          height: 156,
           damage: 80,
           hitstun: 11,
           knockbackX: 10,
