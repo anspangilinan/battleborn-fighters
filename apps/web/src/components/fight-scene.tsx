@@ -266,6 +266,7 @@ const fightAnimationStances = [
   'ko',
   'win',
   'attack1',
+  'attack1a',
   'attack1b',
   'attack1c',
   'attack2',
@@ -533,6 +534,7 @@ function getUniqueProjectileSprites(fighters: CharacterDefinition[]) {
         Object.values(fighter.moves).flatMap((move) =>
           [
             ...(move.projectile ? [move.projectile.sprite] : []),
+            ...(move.projectile?.spriteOptions ?? []),
             ...(move.effectAnimation ? [move.effectAnimation.sprite] : []),
           ],
         ),
@@ -1398,11 +1400,18 @@ function getAnimationFrameIndex(
     case 'special-loop':
       return getSpecialLoopAnimationFrameIndex(fighter, definition, frameCount);
     case 'attack1':
+    case 'attack1a':
     case 'attack1b':
     case 'attack1c':
     case 'attack2':
     case 'attack3': {
       const move = fighter.attackId ? definition.moves[fighter.attackId] : null;
+      if (move?.loopAnimation) {
+        return Math.floor(
+          fighter.attackFrame / Math.max(1, move.animationFrameDurationFrames ?? 3),
+        ) % frameCount;
+      }
+
       const totalFrames = move
         ? getAttackTotalFrames(move) + 1
         : frameCount;
@@ -2000,7 +2009,19 @@ function getProjectileRenderRotation(
   const baseRotation = projectile.rotateToVelocity === false
     ? 0
     : Math.atan2(projectile.vy, projectile.vx);
-  return baseRotation + (projectile.rotationOffsetRadians ?? 0);
+  const offsetRotation = projectile.rotationOffsetRadians ?? 0;
+  if (!projectile.tumbleRotation) {
+    return baseRotation + offsetRotation;
+  }
+
+  const direction = projectile.id % 2 === 0 ? 1 : -1;
+  const age = projectile.ageFrames;
+  const sporadicSpin =
+    direction * age * 0.22 +
+    Math.sin(age * 0.53 + projectile.id * 1.7) * 0.95 +
+    Math.sin(age * 0.17 + projectile.id * 3.1) * 0.45;
+
+  return baseRotation + offsetRotation + sporadicSpin;
 }
 
 function getProjectileTrailScales(projectile: MatchState['projectiles'][number]) {
