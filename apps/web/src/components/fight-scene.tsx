@@ -269,6 +269,7 @@ const fightAnimationStances = [
   'attack1a',
   'attack1b',
   'attack1c',
+  'attack1d',
   'attack2',
   'attack3',
   'special',
@@ -1403,6 +1404,7 @@ function getAnimationFrameIndex(
     case 'attack1a':
     case 'attack1b':
     case 'attack1c':
+    case 'attack1d':
     case 'attack2':
     case 'attack3': {
       const move = fighter.attackId ? definition.moves[fighter.attackId] : null;
@@ -4960,6 +4962,7 @@ export function FightScene(props: FightSceneProps) {
             projectileSprite.setRotation(
               getProjectileRenderRotation(projectile),
             );
+            projectileSprite.setFlipX(projectile.facing < 0);
             projectileSprite.setScale(spriteScale);
             projectileSprite.setAlpha(1);
             this.projectileSprites.set(projectile.id, projectileSprite);
