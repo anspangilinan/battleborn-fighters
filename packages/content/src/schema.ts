@@ -49,6 +49,8 @@ const projectileSchema = z.object({
   shotIntervalFrames: z.number().int().positive().optional(),
   shotHitboxes: z.array(hitboxSchema).optional(),
   spawnAnchor: z.enum(["attacker", "opponent"]).optional(),
+  spawnYAnchor: z.enum(["anchor", "ground"]).optional(),
+  alpha: z.number().min(0).max(1).optional(),
   spriteScale: z.number().positive().optional(),
   animationFrameDurationFrames: z.number().int().positive().optional(),
   offsetX: z.number(),
@@ -178,6 +180,7 @@ export const characterSchema = z.object({
       initialMode: z.enum(["heal", "drain"]),
       toggleModes: z.array(z.enum(["heal", "drain"])).optional(),
       tickIntervalFrames: z.number().int().positive().optional(),
+      channelMoveSpeed: z.number().positive().optional(),
       auraWidthMultiplier: z.number().positive().optional(),
       auraHeightMultiplier: z.number().positive().optional(),
       healPerSecondRatio: z.number().positive().max(1).optional(),
@@ -240,6 +243,16 @@ export const characterSchema = z.object({
 
 export function validateRoster(roster: CharacterDefinition[]) {
   return Object.fromEntries(
-    roster.map((fighter) => [fighter.id, characterSchema.parse(fighter)]),
+    roster.map((fighter) => {
+      try {
+        return [fighter.id, characterSchema.parse(fighter)] as const;
+      } catch (error) {
+        // Surface which fighter failed schema validation (Next.js otherwise hides this context).
+        if (error && typeof error === "object" && "errors" in (error as any)) {
+          (error as any).message = `Invalid fighter definition: ${fighter.id}`;
+        }
+        throw error;
+      }
+    }),
   ) as Record<string, CharacterDefinition>;
 }

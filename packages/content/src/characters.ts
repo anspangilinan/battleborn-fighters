@@ -2110,7 +2110,7 @@ const leechingshjt: CharacterDefinition = {
       startup: 54,
       active: 25,
       recovery: 24,
-      cooldownSeconds: 1.8,
+      cooldownSeconds: 4,
       animationStance: 'special',
       specialSequence: {
         buildUpFrames: 54,
@@ -2126,6 +2126,9 @@ const leechingshjt: CharacterDefinition = {
           'characters/LeechingShjt/Animations/special-projectile-2',
           'characters/LeechingShjt/Animations/special-projectile-3',
           'characters/LeechingShjt/Animations/special-projectile-4',
+          'characters/LeechingShjt/Animations/special-projectile-banana',
+          'characters/LeechingShjt/Animations/special-projectile-banana',
+          'characters/LeechingShjt/Animations/special-projectile-banana',
           'characters/LeechingShjt/Animations/special-projectile-banana',
         ],
         spriteOptionEffects: {
@@ -2246,7 +2249,8 @@ const mrsdoc: CharacterDefinition = {
       projectile: {
         sprite: 'mrsdoc/attack1-projectile',
         tier: 1,
-        spriteScale: 1 / 2,
+        alpha: 0.6,
+        spriteScale: 0.7,
         offsetX: 28,
         offsetY: -64,
         speed: 10,
@@ -2284,61 +2288,105 @@ const mrsdoc: CharacterDefinition = {
       id: 'kick',
       label: 'Case Closed',
       button: 'kick',
-      startup: 6,
-      active: 3,
+      startup: 1,
+      active: 4,
       recovery: 11,
       cooldownSeconds: 0.82,
-      meleeRange: 178,
       phaseThroughProjectiles: true,
-      relocation: {
-        startFrame: 4,
-        endFrame: 8,
-        distanceXRatio: 0.18,
-      },
-      hitboxAnchor: 'attack-origin',
-      frameBoxes: {
-        6: {
-          hitboxes: [
-            hitbox({
-              x: 22,
-              y: -70,
-              width: 30,
-              height: 18,
-              damage: 90,
-              hitstun: 13,
-              knockbackX: 10,
-              launchY: 4,
-            }),
-          ],
-        },
+      projectile: {
+        sprite: 'projectiles/mrsdoc/smite-beam',
+        tier: 2,
+        // Projectile is visually present and "active" for the whole window.
+        spawnFrame: 2,
+        // 4-frame animation * 12 frames-per-frame = 48 frames to play the full sequence.
+        lifetimeFrames: 48,
+        persistsOnHit: true,
+        // Two hits across the duration (frames 2 and ~4).
+        hitIntervalFrames: 2,
+        maxHits: 2,
+        spriteScale: 2.6,
+        // Slow down the beam animation.
+        animationFrameDurationFrames: 12,
+        // Always land on the enemy.
+        spawnAnchor: 'opponent',
+        spawnYAnchor: 'ground',
+        offsetX: 0,
+        // Slightly above ground so the bottom edge stays visible.
+        offsetY: -175,
+        speed: 0.001,
+        targeting: 'opponent',
+        minimumDistanceRatio: 1,
+        apexHeight: 0,
+        landing: 'origin',
+        rotateToVelocity: false,
+        alpha: 0.4,
+        hitbox: hitbox({
+          x: -26,
+          y: -120,
+          width: 52,
+          height: 140,
+          damage: 80,
+          hitstun: 11,
+          knockbackX: 10,
+          launchY: 3,
+        }),
       },
     },
     special: {
       id: 'special',
       label: 'Emergency Rounds',
       button: 'special',
-      startup: 8,
-      active: 4,
-      recovery: 16,
-      cooldownSeconds: 1.3,
+      startup: 1,
+      // Keep invulnerability to ~1.5s (90 frames at 60fps).
+      active: 60,
+      recovery: 29,
+      cooldownSeconds: 6,
       meleeRange: 92,
-      rootVelocityX: 5.4,
+      rootVelocityX: 0,
+      selfHealRatio: 0.125,
+      healAura: 'holy',
+      phaseThroughProjectiles: true,
+      grantsInvulnerability: true,
+      multiHit: true,
       frameBoxes: {
-        8: {
+        1: {
           hitboxes: [
             hitbox({
-              x: 24,
-              y: -82,
-              width: 36,
-              height: 20,
-              damage: 114,
-              hitstun: 17,
-              knockbackX: 14,
-              launchY: 5,
+              x: 10,
+              y: -86,
+              width: 64,
+              height: 26,
+              damage: 38,
+              hitstun: 12,
+              knockbackX: 18,
+              launchY: 3,
             }),
           ],
           hurtboxes: [{ x: -20, y: -100, width: 50, height: 100 }],
         },
+        ...Object.fromEntries(
+          // Pulsing close-range knockback during the cast.
+          Array.from({ length: 15 }, (_, index) => {
+            const frame = 6 + index * 6;
+            return [
+              frame,
+              {
+                hitboxes: [
+                  hitbox({
+                    x: 8,
+                    y: -92,
+                    width: 72,
+                    height: 34,
+                    damage: 1,
+                    hitstun: 8,
+                    knockbackX: 14,
+                    launchY: 2,
+                  }),
+                ],
+              },
+            ] as const;
+          }),
+        ),
       },
     },
   },
@@ -2507,6 +2555,7 @@ const anjokbal: CharacterDefinition = {
         initialMode: 'heal',
         toggleModes: ['heal', 'drain'],
         tickIntervalFrames: 15,
+        channelMoveSpeed: 2.9,
         auraWidthMultiplier: 3,
         auraHeightMultiplier: 1.35,
         healPerSecondRatio: 0.05,

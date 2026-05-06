@@ -1890,7 +1890,7 @@ function renderHolyHealAura(
   matchFrame: number,
   layer: 'back' | 'front',
   combatOffsetY: number,
-  style: 'holy' | 'leaf' = 'holy',
+  style: 'holy' | 'leaf' | 'redleaf' = 'holy',
   auraWidthMultiplier = 1,
   auraHeightMultiplier = 1,
 ) {
@@ -1905,10 +1905,14 @@ function renderHolyHealAura(
   const centerY = baseY - renderHeight * 0.54;
   const auraWidth = renderHeight * (0.56 + progress * 0.2 + pulse * 0.04) * auraWidthMultiplier;
   const auraHeight = renderHeight * (0.92 + progress * 0.18 + pulse * 0.06) * auraHeightMultiplier;
-  const primaryColor = style === 'leaf' ? 0x7cff84 : 0xfff4b8;
-  const secondaryColor = style === 'leaf' ? 0xd8ffd2 : 0xe8fff4;
-  const strokeColor = style === 'leaf' ? 0xb9ff8e : 0xfff9d8;
-  const sparkleColor = style === 'leaf' ? 0xa8ff6a : 0xffffff;
+  const primaryColor =
+    style === 'leaf' ? 0x7cff84 : style === 'redleaf' ? 0xff6d6d : 0xfff4b8;
+  const secondaryColor =
+    style === 'leaf' ? 0xd8ffd2 : style === 'redleaf' ? 0xffc1c1 : 0xe8fff4;
+  const strokeColor =
+    style === 'leaf' ? 0xb9ff8e : style === 'redleaf' ? 0xff8d8d : 0xfff9d8;
+  const sparkleColor =
+    style === 'leaf' ? 0xa8ff6a : style === 'redleaf' ? 0xffa0a0 : 0xffffff;
 
   if (layer === 'back') {
     graphics.fillStyle(primaryColor, 0.13 + pulse * 0.05);
@@ -1936,7 +1940,7 @@ function renderHolyHealAura(
     const sparkleSize = 4.5 + pulse * 2.5 + (index % 3);
     const sparkleAlpha = layer === 'front' ? 0.48 : 0.34;
 
-    if (style === 'leaf') {
+    if (style === 'leaf' || style === 'redleaf') {
       graphics.fillStyle(sparkleColor, sparkleAlpha * 0.75);
       graphics.fillEllipse(sparkleX, sparkleY, sparkleSize * 1.65, sparkleSize * 0.82);
       graphics.lineStyle(1, 0xf4ffe0, sparkleAlpha * 0.42);
@@ -4801,6 +4805,8 @@ export function FightScene(props: FightSceneProps) {
                 selectedArena.combatOffsetY,
               );
               if (activeMove?.healAura) {
+                const auraMode =
+                  fighter.channelSpecialMode === 'drain' ? 'redleaf' : activeMove.healAura ?? 'holy';
                 renderHolyHealAura(
                   this.overchargeBackGraphics,
                   fighter,
@@ -4808,7 +4814,7 @@ export function FightScene(props: FightSceneProps) {
                   state.frame,
                   'back',
                   selectedArena.combatOffsetY,
-                  activeMove.healAura ?? 'holy',
+                  auraMode,
                   activeMove.channelSpecial?.auraWidthMultiplier ?? 1,
                   activeMove.channelSpecial?.auraHeightMultiplier ?? 1,
                 );
@@ -4828,6 +4834,8 @@ export function FightScene(props: FightSceneProps) {
                 selectedArena.combatOffsetY,
               );
               if (activeMove?.healAura) {
+                const auraMode =
+                  fighter.channelSpecialMode === 'drain' ? 'redleaf' : activeMove.healAura ?? 'holy';
                 renderHolyHealAura(
                   this.overchargeFrontGraphics,
                   fighter,
@@ -4835,7 +4843,7 @@ export function FightScene(props: FightSceneProps) {
                   state.frame,
                   'front',
                   selectedArena.combatOffsetY,
-                  activeMove.healAura ?? 'holy',
+                  auraMode,
                   activeMove.channelSpecial?.auraWidthMultiplier ?? 1,
                   activeMove.channelSpecial?.auraHeightMultiplier ?? 1,
                 );
@@ -4987,7 +4995,7 @@ export function FightScene(props: FightSceneProps) {
             );
             projectileSprite.setFlipX(projectile.facing < 0);
             projectileSprite.setScale(spriteScale);
-            projectileSprite.setAlpha(1);
+            projectileSprite.setAlpha(projectile.alpha ?? 1);
             this.projectileSprites.set(projectile.id, projectileSprite);
             this.syncProjectileTrailSprites(
               projectile,

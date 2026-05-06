@@ -876,6 +876,12 @@ function updateFighter(
     fighter.vx *= 0.8;
   }
 
+  // Invulnerability is time-based; tick it down every frame.
+  // (Juggle drop recovery handles its own countdown earlier in this function.)
+  if (!recoveringFromJuggle && fighter.invulnerableFrames > 0) {
+    fighter.invulnerableFrames = Math.max(0, fighter.invulnerableFrames - 1);
+  }
+
   fighter.actionFrames = fighter.action === previousAction
     ? fighter.actionFrames + 1
     : 0;
@@ -1119,12 +1125,19 @@ function applyChannelSpecialTick(
     return;
   }
 
-  if (input.special && !fighter.lastInput.special) {
+  if (input.special) {
     toggleChannelSpecialMode(fighter, move);
   }
 
   const mode = fighter.channelSpecialMode ?? channelSpecial.initialMode;
   const tickIntervalFrames = Math.max(1, channelSpecial.tickIntervalFrames ?? FPS);
+  const channelMoveSpeed = channelSpecial.channelMoveSpeed ?? definition.stats.movement.walkSpeed * 0.65;
+  const direction = input.left === input.right
+    ? 0
+    : input.left
+      ? -1
+      : 1;
+  fighter.vx = direction * channelMoveSpeed;
   const auraWidth = (channelSpecial.auraWidthMultiplier ?? 3) * definition.stats.pushWidth;
   const auraHeight = (channelSpecial.auraHeightMultiplier ?? 1.4) * definition.stats.pushWidth;
   const auraBox = {
@@ -1437,9 +1450,12 @@ function maybeSpawnProjectile(
   const spawnX = projectile.spawnAnchor === "opponent"
     ? opponentAimPoint.x + projectile.offsetX
     : fighter.x + fighter.facing * projectile.offsetX;
-  const spawnY = projectile.spawnAnchor === "opponent"
-    ? opponentAimPoint.y + projectile.offsetY
-    : fighter.y + projectile.offsetY;
+  const spawnY =
+    projectile.spawnYAnchor === "ground"
+      ? config.groundY + projectile.offsetY
+      : projectile.spawnAnchor === "opponent"
+        ? opponentAimPoint.y + projectile.offsetY
+        : fighter.y + projectile.offsetY;
 
   let velocityX = projectile.speed * fighter.facing;
   let velocityY = 0;
@@ -1479,6 +1495,7 @@ function maybeSpawnProjectile(
     rotateToVelocity: projectile.rotateToVelocity,
     rotationOffsetRadians: projectile.rotationOffsetRadians,
     spriteScale: projectile.spriteScale,
+    alpha: projectile.alpha,
     lifetimeFrames: projectile.lifetimeFrames,
     persistsOnHit: projectile.persistsOnHit,
     hitIntervalFrames: projectile.hitIntervalFrames,

@@ -112,6 +112,7 @@ export interface MoveDefinition {
     initialMode: ChannelSpecialMode;
     toggleModes?: ChannelSpecialMode[];
     tickIntervalFrames?: number;
+    channelMoveSpeed?: number;
     auraWidthMultiplier?: number;
     auraHeightMultiplier?: number;
     healPerSecondRatio?: number;
@@ -176,6 +177,13 @@ export interface ProjectileDefinition {
   shotIntervalFrames?: number;
   shotHitboxes?: HitBox[];
   spawnAnchor?: "attacker" | "opponent";
+  /**
+   * Determines how the projectile spawn Y is computed:
+   * - "anchor" (default): relative to attacker/opponent aim point
+   * - "ground": relative to the arena groundY (stable even if opponent is jumping)
+   */
+  spawnYAnchor?: "anchor" | "ground";
+  alpha?: number;
   spriteScale?: number;
   animationFrameDurationFrames?: number;
   offsetX: number;
@@ -329,6 +337,7 @@ export interface ProjectileRuntimeState {
   rotateToVelocity?: boolean;
   rotationOffsetRadians?: number;
   spriteScale?: number;
+  alpha?: number;
   lifetimeFrames?: number;
   persistsOnHit?: boolean;
   hitIntervalFrames?: number;
