@@ -257,34 +257,48 @@ export function FightCharacterSelect({
   initialStep = "fighters",
 }: FightCharacterSelectProps) {
   const router = useRouter();
+
+  const sortedFighters = useMemo(() => {
+    return [...fighters].sort((a, b) => {
+      const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      return byName !== 0 ? byName : a.id.localeCompare(b.id);
+    });
+  }, [fighters]);
   const opponentFighters = opponents ?? fighters;
+  const sortedOpponentFighters = useMemo(() => {
+    return [...opponentFighters].sort((a, b) => {
+      const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      return byName !== 0 ? byName : a.id.localeCompare(b.id);
+    });
+  }, [opponentFighters]);
+
   const fighterRoster = useMemo(
-    () => Object.fromEntries(fighters.map((fighter) => [fighter.id, fighter])),
-    [fighters],
+    () => Object.fromEntries(sortedFighters.map((fighter) => [fighter.id, fighter])),
+    [sortedFighters],
   );
   const opponentRoster = useMemo(
-    () => Object.fromEntries(opponentFighters.map((fighter) => [fighter.id, fighter])),
-    [opponentFighters],
+    () => Object.fromEntries(sortedOpponentFighters.map((fighter) => [fighter.id, fighter])),
+    [sortedOpponentFighters],
   );
   const fighterLookup = useMemo(
     () =>
       Object.fromEntries(
-        [...fighters, ...opponentFighters].map((fighter) => [fighter.id, fighter]),
+        [...sortedFighters, ...sortedOpponentFighters].map((fighter) => [fighter.id, fighter]),
       ),
-    [fighters, opponentFighters],
+    [sortedFighters, sortedOpponentFighters],
   );
   const fighterSelectOptionIds = useMemo(
-    () => [...fighters.map((fighter) => fighter.id), randomFighterSelectionId],
-    [fighters],
+    () => [...sortedFighters.map((fighter) => fighter.id), randomFighterSelectionId],
+    [sortedFighters],
   );
   const opponentSelectOptionIds = useMemo(
-    () => [...opponentFighters.map((fighter) => fighter.id), randomFighterSelectionId],
-    [opponentFighters],
+    () => [...sortedOpponentFighters.map((fighter) => fighter.id), randomFighterSelectionId],
+    [sortedOpponentFighters],
   );
-  const defaultFighter = fighters[0];
+  const defaultFighter = sortedFighters[0];
   const defaultOpponent =
-    opponentFighters.find((fighter) => fighter.id !== initialFighterId) ??
-    opponentFighters[0] ??
+    sortedOpponentFighters.find((fighter) => fighter.id !== initialFighterId) ??
+    sortedOpponentFighters[0] ??
     defaultFighter;
   const [step, setStep] = useState<FightCharacterSelectStep>(
     mode === "arcade" ? "fighters" : initialStep,
@@ -298,7 +312,7 @@ export function FightCharacterSelect({
   const [selectedOpponentId, setSelectedOpponentId] = useState(() =>
     isSelectableFighterSelection(initialOpponentId, opponentRoster)
       ? initialOpponentId
-      : opponentFighters.find((fighter) => fighter.id !== initialFighterId)?.id ??
+      : sortedOpponentFighters.find((fighter) => fighter.id !== initialFighterId)?.id ??
         defaultOpponent?.id ??
         "",
   );
@@ -324,11 +338,11 @@ export function FightCharacterSelect({
       ? buildArcadeOrder(
           selectedFighterId,
           Object.fromEntries(
-            opponentFighters.map((fighter) => [fighter.id, { name: fighter.name }]),
+            sortedOpponentFighters.map((fighter) => [fighter.id, { name: fighter.name }]),
           ),
         )
       : [],
-    [mode, opponentFighters, selectedFighterId],
+    [mode, sortedOpponentFighters, selectedFighterId],
   );
   const arcadeArenaId = useMemo(
     () => (mode === "arcade" ? pickRandomArenaId() : selectedArena.id),
@@ -338,11 +352,11 @@ export function FightCharacterSelect({
     hoveredRandomRoster === "fighter" || isRandomFighterSelection(selectedFighterId);
   const showOpponentRandomCycle =
     hoveredRandomRoster === "opponent" || isRandomFighterSelection(selectedOpponentId);
-  const fighterRandomPreview = useRosterCycle(showFighterRandomCycle, fighters);
+  const fighterRandomPreview = useRosterCycle(showFighterRandomCycle, sortedFighters);
   const opponentRandomPreview = useRosterCycle(
     showOpponentRandomCycle,
-    opponentFighters,
-    Math.max(1, Math.floor(opponentFighters.length / 2)),
+    sortedOpponentFighters,
+    Math.max(1, Math.floor(sortedOpponentFighters.length / 2)),
   );
   const previewFighter = showFighterRandomCycle ? fighterRandomPreview ?? defaultFighter : selectedFighter ?? defaultFighter;
   const previewOpponent = showOpponentRandomCycle ? opponentRandomPreview ?? defaultOpponent : selectedOpponent ?? defaultOpponent;
@@ -585,7 +599,7 @@ export function FightCharacterSelect({
         role="list"
         aria-label="Player roster"
       >
-        {fighters.map((fighter) => (
+        {sortedFighters.map((fighter) => (
           <button
             key={fighter.id}
             type="button"
@@ -646,7 +660,7 @@ export function FightCharacterSelect({
             role="list"
             aria-label="Opponent roster"
           >
-            {opponentFighters.map((fighter) => (
+            {sortedOpponentFighters.map((fighter) => (
               <button
                 key={`${fighter.id}-opponent`}
                 type="button"
