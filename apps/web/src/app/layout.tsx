@@ -11,6 +11,7 @@ const charybdis = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://fighters.battleborn.online"),
   title: "Battleborn Fighters",
   description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
   openGraph: {
@@ -18,9 +19,9 @@ export const metadata: Metadata = {
     description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
     images: [
       {
-        url: "/fighters-pixel-logo.png",
-        width: 256,
-        height: 170,
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
         alt: "Battleborn Fighters logo",
       },
     ],
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Battleborn Fighters",
     description: "Fight against your favorite dumbasses from Battleborn. More characters coming soon!",
-    images: ["/fighters-pixel-logo.png"],
+    images: ["/og-image.png"],
   },
 };
 
