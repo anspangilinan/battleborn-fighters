@@ -1398,7 +1398,10 @@ function getAnimationFrameIndex(
     case 'special-loop':
       return getSpecialLoopAnimationFrameIndex(fighter, definition, frameCount);
     case 'attack1':
-    case 'attack2': {
+    case 'attack1b':
+    case 'attack1c':
+    case 'attack2':
+    case 'attack3': {
       const move = fighter.attackId ? definition.moves[fighter.attackId] : null;
       const totalFrames = move
         ? getAttackTotalFrames(move) + 1
