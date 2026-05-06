@@ -6,6 +6,7 @@ export type SpecialMovePhase = "build-up" | "landing-hold" | "pause" | "zoom-out
 export type ChannelSpecialMode = "heal" | "drain";
 export type MoveAnimationStance =
   | "attack1"
+  | "attack1a"
   | "attack1b"
   | "attack1c"
   | "attack2"
@@ -119,6 +120,8 @@ export interface MoveDefinition {
    */
   grantsInvulnerability?: boolean;
   animationStance?: MoveAnimationStance;
+  loopAnimation?: boolean;
+  animationFrameDurationFrames?: number;
   followUpMoveId?: string;
   followUpWindowFrames?: number;
   followUpExpireCooldownSeconds?: number;
@@ -150,6 +153,11 @@ export interface SpecialSequenceDefinition {
 
 export interface ProjectileDefinition {
   sprite: string;
+  spriteOptions?: string[];
+  spriteOptionEffects?: Record<string, {
+    hitbox?: HitBox;
+    healTargetRatio?: number;
+  }>;
   tier: number;
   guardBypass?: boolean;
   rotateToVelocity?: boolean;
@@ -174,6 +182,7 @@ export interface ProjectileDefinition {
    * Opt-in so existing "opponent" targeting remains fire-and-forget.
    */
   homing?: boolean;
+  tumbleRotation?: boolean;
   minimumDistanceRatio: number;
   maximumDistanceRatio?: number;
   apexHeight: number;
@@ -331,7 +340,9 @@ export interface ProjectileRuntimeState {
   minimumDistance: number;
   maximumDistance?: number;
   hitbox: HitBox;
+  healTargetRatio?: number;
   homing?: boolean;
+  tumbleRotation?: boolean;
 }
 
 export interface MatchConfig {

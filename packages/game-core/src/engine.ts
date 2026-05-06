@@ -1381,7 +1381,18 @@ function maybeSpawnProjectile(
     return;
   }
 
-  const resolvedHitbox = projectile.shotHitboxes?.[shotIndex] ?? projectile.hitbox;
+  const sprite = getProjectileSpriteForShot(
+    projectile,
+    state,
+    fighter,
+    move.id,
+    shotIndex,
+  );
+  const spriteEffect = projectile.spriteOptionEffects?.[sprite];
+  const resolvedHitbox =
+    spriteEffect?.hitbox ??
+    projectile.shotHitboxes?.[shotIndex] ??
+    projectile.hitbox;
   const minimumDistance = config.width * projectile.minimumDistanceRatio;
   const maximumDistance = projectile.maximumDistanceRatio == null
     ? undefined
@@ -1426,7 +1437,7 @@ function maybeSpawnProjectile(
     ownerSlot: fighter.slot,
     ownerFighterId: fighter.fighterId,
     moveId: move.id,
-    sprite: projectile.sprite,
+    sprite,
     tier: projectile.tier,
     guardBypass: projectile.guardBypass,
     rotateToVelocity: projectile.rotateToVelocity,
@@ -1449,9 +1460,39 @@ function maybeSpawnProjectile(
     minimumDistance,
     maximumDistance,
     hitbox: resolvedHitbox,
+    healTargetRatio: spriteEffect?.healTargetRatio,
     homing: projectile.homing,
+    tumbleRotation: projectile.tumbleRotation,
   });
   state.nextProjectileId += 1;
+}
+
+function getProjectileSpriteForShot(
+  projectile: NonNullable<CharacterDefinition["moves"][string]["projectile"]>,
+  state: MatchState,
+  fighter: FighterRuntimeState,
+  moveId: string,
+  shotIndex: number,
+) {
+  const spriteOptions = projectile.spriteOptions;
+  if (!spriteOptions || spriteOptions.length === 0) {
+    return projectile.sprite;
+  }
+
+  const seed = [
+    state.frame,
+    state.nextProjectileId,
+    fighter.slot,
+    fighter.attackFrame,
+    shotIndex,
+    moveId.length,
+    fighter.fighterId.length,
+  ].reduce((hash, value) => {
+    const mixed = Math.imul(hash ^ value, 2654435761);
+    return mixed >>> 0;
+  }, 2166136261);
+
+  return spriteOptions[seed % spriteOptions.length] ?? projectile.sprite;
 }
 
 function getProjectileLandingY(
@@ -2150,6 +2191,25 @@ function resolveProjectileHits(
 
     if (!canInteractThisFrame) {
       survivingProjectiles.push(projectile);
+      continue;
+    }
+
+    if (projectile.healTargetRatio != null) {
+      const healAmount = Math.floor(defenderDef.stats.maxHealth * projectile.healTargetRatio);
+      if (healAmount > 0 && defender.health > 0) {
+        defender.health = Math.min(defenderDef.stats.maxHealth, defender.health + healAmount);
+        defender.recoverableHealth = Math.min(
+          defender.recoverableHealth,
+          Math.max(0, defenderDef.stats.maxHealth - defender.health),
+        );
+      }
+      if (move) {
+        state.events.push(`${attacker.name} healed ${defender.name} with ${move.label}`);
+      }
+      projectile.hitCount += 1;
+      if (projectile.persistsOnHit && defender.health > 0) {
+        survivingProjectiles.push(projectile);
+      }
       continue;
     }
 

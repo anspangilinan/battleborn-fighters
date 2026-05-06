@@ -15,6 +15,11 @@ const hitboxSchema = z.object({
   launchY: z.number().optional(),
 });
 
+const projectileEffectHitboxSchema = hitboxSchema.extend({
+  // Sprite-option effects can be non-damaging, e.g. heal pickups.
+  damage: z.number().int().nonnegative(),
+});
+
 const boxSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -24,6 +29,14 @@ const boxSchema = z.object({
 
 const projectileSchema = z.object({
   sprite: z.string(),
+  spriteOptions: z.array(z.string()).min(1).optional(),
+  spriteOptionEffects: z.record(
+    z.string(),
+    z.object({
+      hitbox: projectileEffectHitboxSchema.optional(),
+      healTargetRatio: z.number().positive().max(1).optional(),
+    }),
+  ).optional(),
   tier: z.number().int().positive(),
   rotateToVelocity: z.boolean().optional(),
   rotationOffsetRadians: z.number().optional(),
@@ -43,6 +56,7 @@ const projectileSchema = z.object({
   speed: z.number().positive(),
   targeting: z.enum(["forward", "opponent"]).optional(),
   homing: z.boolean().optional(),
+  tumbleRotation: z.boolean().optional(),
   minimumDistanceRatio: z.number().positive().max(1),
   maximumDistanceRatio: z.number().positive().max(1).optional(),
   apexHeight: z.number().nonnegative(),
@@ -171,6 +185,7 @@ export const characterSchema = z.object({
     grantsInvulnerability: z.boolean().optional(),
     animationStance: z.enum([
       "attack1",
+      "attack1a",
       "attack1b",
       "attack1c",
       "attack2",
@@ -180,6 +195,8 @@ export const characterSchema = z.object({
       "special-b",
       "special-c",
     ]).optional(),
+    loopAnimation: z.boolean().optional(),
+    animationFrameDurationFrames: z.number().int().positive().optional(),
     followUpMoveId: z.string().optional(),
     followUpWindowFrames: z.number().int().positive().optional(),
     followUpExpireCooldownSeconds: z.number().nonnegative().optional(),

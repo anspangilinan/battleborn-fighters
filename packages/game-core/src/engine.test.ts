@@ -243,6 +243,27 @@ const multiShotHitboxFighter: CharacterDefinition = {
   },
 };
 
+const spriteOptionProjectileFighter: CharacterDefinition = {
+  ...projectileFighter,
+  id: "sprite-option-projectile-fighter",
+  name: "Sprite Option Projectile Fighter",
+  moves: {
+    ...projectileFighter.moves,
+    punch: {
+      ...projectileFighter.moves.punch,
+      startup: 1,
+      recovery: 12,
+      projectile: {
+        ...projectileFighter.moves.punch.projectile!,
+        spawnFrame: 1,
+        shotCount: 2,
+        shotIntervalFrames: 1,
+        spriteOptions: ["option-a", "option-b", "option-c", "option-d", "option-e"],
+      },
+    },
+  },
+};
+
 const fastProjectileFighter: CharacterDefinition = {
   ...projectileFighter,
   id: "fast-projectile-fighter",
@@ -1884,6 +1905,56 @@ test("guard bypass projectiles still land through guard", () => {
   assert.ok(!state.events.some((entry) => entry.includes("blocked Guard Break Bolt")));
 });
 
+test("healing projectiles restore target health instead of damaging", () => {
+  const roster = {
+    [projectileFighter.id]: projectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, projectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 300;
+  state.fighters[1].x = 460;
+  state.fighters[1].health = 700;
+  state.projectiles = [
+    {
+      id: 1,
+      ownerSlot: 1,
+      ownerFighterId: projectileFighter.id,
+      moveId: "punch",
+      sprite: "banana",
+      tier: 1,
+      ageFrames: 0,
+      hitCount: 0,
+      x: 460,
+      y: 355,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      facing: 1,
+      originX: 460,
+      minimumDistance: DEFAULT_CONFIG.width * 0.8,
+      hitbox: {
+        x: -18,
+        y: -18,
+        width: 36,
+        height: 36,
+        damage: 0,
+        hitstun: 0,
+        knockbackX: 0,
+      },
+      healTargetRatio: 0.125,
+    },
+  ];
+  state.nextProjectileId = 2;
+
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.fighters[1].health, 825);
+  assert.equal(state.projectiles.length, 0);
+  assert.ok(state.events.some((entry) => entry.includes("healed")));
+});
+
 test("multi-shot projectiles can override hitboxes per shot index", () => {
   const roster = {
     [multiShotHitboxFighter.id]: multiShotHitboxFighter,
@@ -1907,6 +1978,29 @@ test("multi-shot projectiles can override hitboxes per shot index", () => {
   state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
   assert.equal(state.projectiles.length, 3);
   assert.equal(state.projectiles[2].hitbox.knockbackX, 9);
+});
+
+test("multi-shot projectiles can choose from authored sprite options", () => {
+  const roster = {
+    [spriteOptionProjectileFighter.id]: spriteOptionProjectileFighter,
+    [fighter.id]: fighter,
+  };
+  let state = createMatchState(roster, spriteOptionProjectileFighter.id, fighter.id);
+  state.countdownFrames = 0;
+  state.status = "fighting";
+  state.fighters[0].x = 220;
+  state.fighters[1].x = 820;
+
+  state = stepMatch(state, roster, input({ punch: true }), EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+  state = stepMatch(state, roster, EMPTY_INPUT, EMPTY_INPUT);
+
+  assert.equal(state.projectiles.length, 2);
+  assert.ok(
+    state.projectiles.every((projectile) =>
+      spriteOptionProjectileFighter.moves.punch.projectile!.spriteOptions!.includes(projectile.sprite),
+    ),
+  );
 });
 
 test("projectile apex height stays stable when speed changes", () => {
