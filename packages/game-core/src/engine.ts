@@ -170,6 +170,7 @@ function createFighterState(
     specialMovePhaseFrame: 0,
     channelSpecialMode: null,
     attackConnected: false,
+    stealthFrames: 0,
     pendingFollowUpMoveId: null,
     pendingFollowUpFrames: null,
     pendingFollowUpSourceMoveId: null,
@@ -561,6 +562,10 @@ function finalizeFighterFrame(
     fighter.slowMultiplier = 1;
   }
 
+  if (fighter.stealthFrames > 0) {
+    fighter.stealthFrames = Math.max(0, fighter.stealthFrames - 1);
+  }
+
   if (fighter.grounded) {
     fighter.airJumpsRemaining = isOverchargeActive(fighter) ? 1 : 0;
   } else if (!isOverchargeActive(fighter)) {
@@ -910,6 +915,9 @@ function maybeStartAttack(fighter: FighterRuntimeState, definition: CharacterDef
   fighter.channelSpecialMode = move.channelSpecial?.initialMode ?? null;
   setSpecialMovePhase(fighter, move.specialSequence ? "build-up" : null);
   fighter.attackConnected = false;
+  if (move.stealthFrames) {
+    fighter.stealthFrames = Math.max(fighter.stealthFrames, move.stealthFrames);
+  }
   fighter.moveCooldownFrames[move.id] = getMoveCooldownFrames(move);
   if (requestedButton === "special") {
     const defaultSpecial = definition.moves.special;
@@ -1117,6 +1125,18 @@ function applyChannelSpecialTick(
 
   const mode = fighter.channelSpecialMode ?? channelSpecial.initialMode;
   const tickIntervalFrames = Math.max(1, channelSpecial.tickIntervalFrames ?? FPS);
+  const auraWidth = (channelSpecial.auraWidthMultiplier ?? 3) * definition.stats.pushWidth;
+  const auraHeight = (channelSpecial.auraHeightMultiplier ?? 1.4) * definition.stats.pushWidth;
+  const auraBox = {
+    x: fighter.x - auraWidth * 0.5,
+    y: fighter.y - auraHeight,
+    width: auraWidth,
+    height: auraHeight,
+  };
+  const opponentHit = getHurtboxes(opponent, opponentDefinition).some((hurtbox) =>
+    intersects(auraBox, hurtbox),
+  );
+
   if (mode === "heal") {
     if (channelSpecial.healPerSecondRatio == null || fighter.attackFrame % tickIntervalFrames !== 0) {
       return;
@@ -1138,6 +1158,10 @@ function applyChannelSpecialTick(
   }
 
   if (mode === "drain") {
+    if (!opponentHit) {
+      return;
+    }
+
     if (channelSpecial.slowMultiplier != null && opponent.health > 0) {
       opponent.slowFrames = Math.max(opponent.slowFrames, 2);
       opponent.slowMultiplier = Math.min(
@@ -1961,7 +1985,7 @@ function resolveHits(
   const attackFacing = getAttackHitboxFacing(attacker, move);
   const passThroughOpponent = move.passThroughOpponent ?? false;
   const pushWidthSum = (attackerDef.stats.pushWidth + defenderDef.stats.pushWidth) * 0.5;
-  const crossedSideX = defender.x + attackFacing * (pushWidthSum + 2);
+  const crossedSideX = defender.x + attackFacing * (pushWidthSum + 6);
 
   function pullBehindOpponent() {
     if (!passThroughOpponent) {
@@ -2004,10 +2028,13 @@ function resolveHits(
         clearOverchargeState(defender);
         clearComboState(defender);
       }
-      attacker.attackConnected = true;
-      unlockFollowUpMove(attacker, move);
-      gainOverchargeMeter(attacker, getOverchargeMeterGain("block-done", interactionDamage));
-      gainOverchargeMeter(defender, getOverchargeMeterGain("block-taken", interactionDamage));
+    attacker.attackConnected = true;
+    unlockFollowUpMove(attacker, move);
+    if (move.button === "special") {
+      attacker.moveCooldownFrames.kick = 0;
+    }
+    gainOverchargeMeter(attacker, getOverchargeMeterGain("block-done", interactionDamage));
+    gainOverchargeMeter(defender, getOverchargeMeterGain("block-taken", interactionDamage));
       state.events.push(`${defender.name} blocked ${move.label}`);
       if (move.finishOnHit) {
         attacker.vx = 0;
@@ -2048,6 +2075,9 @@ function resolveHits(
     }
     attacker.attackConnected = true;
     unlockFollowUpMove(attacker, move);
+    if (move.button === "special") {
+      attacker.moveCooldownFrames.kick = 0;
+    }
     gainOverchargeMeter(attacker, getOverchargeMeterGain("hit-done", damage));
     gainOverchargeMeter(defender, getOverchargeMeterGain("hit-taken", damage));
     state.events.push(`${attacker.name} landed ${move.label}`);

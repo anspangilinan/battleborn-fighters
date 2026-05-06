@@ -112,6 +112,8 @@ export interface MoveDefinition {
     initialMode: ChannelSpecialMode;
     toggleModes?: ChannelSpecialMode[];
     tickIntervalFrames?: number;
+    auraWidthMultiplier?: number;
+    auraHeightMultiplier?: number;
     healPerSecondRatio?: number;
     damagePerSecondRatio?: number;
     slowMultiplier?: number;
@@ -127,6 +129,7 @@ export interface MoveDefinition {
   followUpWindowFrames?: number;
   followUpExpireCooldownSeconds?: number;
   passThroughOpponent?: boolean;
+  stealthFrames?: number;
   specialSequence?: SpecialSequenceDefinition;
   projectile?: ProjectileDefinition;
   relocation?: MoveRelocationDefinition;
@@ -288,6 +291,7 @@ export interface FighterRuntimeState {
   specialMovePhaseFrame: number;
   channelSpecialMode: ChannelSpecialMode | null;
   attackConnected: boolean;
+  stealthFrames: number;
   pendingFollowUpMoveId: string | null;
   pendingFollowUpFrames: number | null;
   pendingFollowUpSourceMoveId: string | null;

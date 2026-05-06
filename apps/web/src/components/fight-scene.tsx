@@ -950,6 +950,22 @@ function isBlinkFrameVisible(
   return Math.floor(frame / 4) % 2 === 0;
 }
 
+function getFighterOpacity(fighter: MatchState['fighters'][number]) {
+  if (fighter.stealthFrames > 0) {
+    return 0.18;
+  }
+
+  if (fighter.frozenFrames > 0) {
+    return 0.92;
+  }
+
+  if (fighter.overchargeActiveFrames > 0) {
+    return 0.94;
+  }
+
+  return 1;
+}
+
 function getAttackTotalFrames(move: CharacterDefinition['moves'][string]) {
   return move.startup + move.active + move.recovery;
 }
@@ -1875,6 +1891,8 @@ function renderHolyHealAura(
   layer: 'back' | 'front',
   combatOffsetY: number,
   style: 'holy' | 'leaf' = 'holy',
+  auraWidthMultiplier = 1,
+  auraHeightMultiplier = 1,
 ) {
   const visualLift =
     getDashVisualLift(fighter, definition) +
@@ -1885,8 +1903,8 @@ function renderHolyHealAura(
   const progress = Math.min(1, fighter.actionFrames / 18);
   const pulse = 0.5 + 0.5 * Math.sin(matchFrame * 0.22 + fighter.slot * 1.4);
   const centerY = baseY - renderHeight * 0.54;
-  const auraWidth = renderHeight * (0.56 + progress * 0.2 + pulse * 0.04);
-  const auraHeight = renderHeight * (0.92 + progress * 0.18 + pulse * 0.06);
+  const auraWidth = renderHeight * (0.56 + progress * 0.2 + pulse * 0.04) * auraWidthMultiplier;
+  const auraHeight = renderHeight * (0.92 + progress * 0.18 + pulse * 0.06) * auraHeightMultiplier;
   const primaryColor = style === 'leaf' ? 0x7cff84 : 0xfff4b8;
   const secondaryColor = style === 'leaf' ? 0xd8ffd2 : 0xe8fff4;
   const strokeColor = style === 'leaf' ? 0xb9ff8e : 0xfff9d8;
@@ -4762,15 +4780,16 @@ export function FightScene(props: FightSceneProps) {
               fighterSprite.setScale(
                 spriteScale * (1 + overchargePulse * 0.03) * activationPulse,
               );
+              const fighterOpacity = getFighterOpacity(fighter);
               if (fighter.frozenFrames > 0) {
                 fighterSprite.setTint(0x79c6ff);
-                fighterSprite.setAlpha(0.92);
+                fighterSprite.setAlpha(fighterOpacity);
               } else if (fighter.overchargeActiveFrames > 0) {
                 fighterSprite.setTint(0xfff8dc);
-                fighterSprite.setAlpha(0.94 + overchargePulse * 0.06);
+                fighterSprite.setAlpha(fighterOpacity + overchargePulse * 0.06);
               } else {
                 fighterSprite.clearTint();
-                fighterSprite.setAlpha(1);
+                fighterSprite.setAlpha(fighterOpacity);
               }
               this.fighterSprites.set(fighter.slot, fighterSprite);
               renderOverchargeAura(
@@ -4790,6 +4809,8 @@ export function FightScene(props: FightSceneProps) {
                   'back',
                   selectedArena.combatOffsetY,
                   activeMove.healAura ?? 'holy',
+                  activeMove.channelSpecial?.auraWidthMultiplier ?? 1,
+                  activeMove.channelSpecial?.auraHeightMultiplier ?? 1,
                 );
               }
               renderGuardOverlay(
@@ -4815,6 +4836,8 @@ export function FightScene(props: FightSceneProps) {
                   'front',
                   selectedArena.combatOffsetY,
                   activeMove.healAura ?? 'holy',
+                  activeMove.channelSpecial?.auraWidthMultiplier ?? 1,
+                  activeMove.channelSpecial?.auraHeightMultiplier ?? 1,
                 );
               }
             } else {

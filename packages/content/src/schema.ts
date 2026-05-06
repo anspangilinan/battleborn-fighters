@@ -178,6 +178,8 @@ export const characterSchema = z.object({
       initialMode: z.enum(["heal", "drain"]),
       toggleModes: z.array(z.enum(["heal", "drain"])).optional(),
       tickIntervalFrames: z.number().int().positive().optional(),
+      auraWidthMultiplier: z.number().positive().optional(),
+      auraHeightMultiplier: z.number().positive().optional(),
       healPerSecondRatio: z.number().positive().max(1).optional(),
       damagePerSecondRatio: z.number().positive().max(1).optional(),
       slowMultiplier: z.number().positive().max(1).optional(),
@@ -202,6 +204,7 @@ export const characterSchema = z.object({
     followUpWindowFrames: z.number().int().positive().optional(),
     followUpExpireCooldownSeconds: z.number().nonnegative().optional(),
     passThroughOpponent: z.boolean().optional(),
+    stealthFrames: z.number().int().positive().optional(),
     specialSequence: z.object({
       buildUpFrames: z.number().int().positive(),
       animationBuildUpFrames: z.number().int().positive().optional(),

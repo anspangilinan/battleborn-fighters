@@ -1576,10 +1576,10 @@ const corgi: CharacterDefinition = {
     portrait: '/characters/corgi/animations/idle/0.png',
     renderHeight: 110,
     stanceRenderOffsets: {
-      attack1a: { y: 12 },
-      attack1b: { y: 12 },
-      attack1c: { y: 12 },
-      attack1d: { y: 12 },
+      attack1a: { y: -8 },
+      attack1b: { y: -8 },
+      attack1c: { y: -8 },
+      attack1d: { y: -8 },
     },
   },
   bot: {
@@ -1816,7 +1816,7 @@ const corgi: CharacterDefinition = {
       startup: 1,
       active: 4,
       recovery: 10,
-      cooldownSeconds: 0.75,
+      cooldownSeconds: 2,
       meleeRange: 142,
       phaseThroughProjectiles: true,
       passThroughOpponent: true,
@@ -1848,14 +1848,16 @@ const corgi: CharacterDefinition = {
       id: 'special',
       label: 'Zoomies',
       button: 'special',
-      startup: 7,
+      startup: 1,
       active: 5,
       recovery: 14,
-      cooldownSeconds: 1.2,
+      cooldownSeconds: 5,
       meleeRange: 84,
-      rootVelocityX: 6.8,
+      passThroughOpponent: true,
+      stealthFrames: 120,
+      rootVelocityX: 7.0,
       frameBoxes: {
-        7: {
+        1: {
           hitboxes: [
             hitbox({
               x: 24,
@@ -1870,6 +1872,11 @@ const corgi: CharacterDefinition = {
           ],
           hurtboxes: [{ x: -28, y: -70, width: 56, height: 70 }],
         },
+      },
+      relocation: {
+        startFrame: 1,
+        endFrame: 5,
+        distanceXRatio: 0.315,
       },
     },
   },
@@ -2239,7 +2246,7 @@ const mrsdoc: CharacterDefinition = {
       projectile: {
         sprite: 'mrsdoc/attack1-projectile',
         tier: 1,
-        spriteScale: 1 / 3,
+        spriteScale: 1 / 2,
         offsetX: 28,
         offsetY: -64,
         speed: 10,
@@ -2500,6 +2507,8 @@ const anjokbal: CharacterDefinition = {
         initialMode: 'heal',
         toggleModes: ['heal', 'drain'],
         tickIntervalFrames: 15,
+        auraWidthMultiplier: 3,
+        auraHeightMultiplier: 1.35,
         healPerSecondRatio: 0.05,
         damagePerSecondRatio: 0.035,
         slowMultiplier: 0.52,
