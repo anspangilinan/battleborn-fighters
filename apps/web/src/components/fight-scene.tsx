@@ -156,6 +156,10 @@ type RoomStateMessage = {
   readySlots: number[];
   connectedSlots: number[];
   selections: Record<string, string | undefined>;
+  identities?: {
+    host: { accountId: string; alias: string } | null;
+    guest: { accountId: string; alias: string } | null;
+  };
 };
 
 type InfoMessage = {
@@ -3294,6 +3298,10 @@ export function FightScene(props: FightSceneProps) {
   const [isFullscreenSupported, setIsFullscreenSupported] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playerSlot, setPlayerSlot] = useState<1 | 2>(1);
+  const [onlineIdentities, setOnlineIdentities] = useState<{
+    1?: { accountId: string; alias: string };
+    2?: { accountId: string; alias: string };
+  }>({});
   const playerSlotRef = useRef<1 | 2>(1);
   const [trainingOpponentMode, setTrainingOpponentMode] =
     useState<TrainingOpponentMode>('idle');
@@ -4389,6 +4397,12 @@ export function FightScene(props: FightSceneProps) {
                   message.selections.host,
                   message.selections.guest,
                 ]);
+                if (message.identities) {
+                  setOnlineIdentities({
+                    1: message.identities.host ?? undefined,
+                    2: message.identities.guest ?? undefined,
+                  });
+                }
                 setConnectionState(
                   `Room ${message.roomCode} · connected ${message.connectedSlots.length}/2`,
                 );
@@ -5061,7 +5075,8 @@ export function FightScene(props: FightSceneProps) {
         winnerSlot: hudState.winner,
         players: hudState.fighters.map((fighter) => ({
           slot: fighter.slot,
-          name: fighter.name,
+          alias: onlineIdentities[fighter.slot]?.alias ?? fighter.name,
+          accountId: onlineIdentities[fighter.slot]?.accountId ?? null,
           fighterId: fighter.fighterId,
         })),
         summary: {
@@ -5070,7 +5085,7 @@ export function FightScene(props: FightSceneProps) {
         },
       }),
     });
-  }, [hudState, props.mode, props.roomCode]);
+  }, [hudState, onlineIdentities, props.mode, props.roomCode]);
 
   const hudHeadshots = useMemo(
     () => ({

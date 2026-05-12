@@ -10,11 +10,15 @@ const fighters = Object.values(fighterRoster);
 
 type FormMode = "create" | "join";
 
-export function OnlineRoomPanel() {
+interface OnlineRoomPanelProps {
+  initialPlayerName?: string;
+}
+
+export function OnlineRoomPanel({ initialPlayerName = "Player" }: OnlineRoomPanelProps) {
   const router = useRouter();
   const [mode, setMode] = useState<FormMode>("create");
   const [roomCode, setRoomCode] = useState("");
-  const [playerName, setPlayerName] = useState("Arcade Ace");
+  const [playerName, setPlayerName] = useState(initialPlayerName.slice(0, 20) || "Player");
   const [fighterId, setFighterId] = useState(fighters[0]?.id ?? "morana");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -56,6 +60,10 @@ export function OnlineRoomPanel() {
 
       const payload = await response.json();
       if (!response.ok) {
+        if (response.status === 401) {
+          router.push("/api/auth/discord/login?next=/online");
+          return;
+        }
         setError(payload.error ?? "Unable to open the room flow.");
         return;
       }

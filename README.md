@@ -5,6 +5,7 @@ Battleborn Fighters is a browser-based 2D fighting game MVP with:
 - a persistent WebSocket match service for Render
 - `Neon Postgres` for match history and simple rating persistence
 - a shared TypeScript combat engine used by both the browser practice mode and the match service
+- Discord-authenticated online versus (local/training/arcade remain public)
 
 ## Features
 
@@ -51,6 +52,10 @@ SESSION_TOKEN_SECRET=change-me NEXT_PUBLIC_MATCH_SERVICE_URL=ws://localhost:8787
 ## Environment Variables
 
 - `SESSION_TOKEN_SECRET`: shared between Vercel and Render so the match service can verify signed session tokens
+- `AUTH_SESSION_SECRET`: signing key for web auth cookie sessions
+- `APP_URL`: canonical URL for OAuth callback generation (for local dev, `http://localhost:42070`)
+- `DISCORD_CLIENT_ID`: Discord OAuth application client id
+- `DISCORD_CLIENT_SECRET`: Discord OAuth application secret
 - `NEXT_PUBLIC_MATCH_SERVICE_URL`: browser WebSocket origin for the Render match service
 - `DATABASE_URL`: Neon Postgres connection string used by `/api/match/report`
 

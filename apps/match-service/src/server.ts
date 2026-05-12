@@ -11,11 +11,17 @@ interface SessionTokenPayload {
   role: "host" | "guest";
   playerName: string;
   fighterId: string;
+  accountId: string;
+  discordUserId: string;
+  alias: string;
 }
 
 interface ConnectionState {
   socket: WebSocket | null;
   playerName: string;
+  alias: string;
+  accountId: string | null;
+  discordUserId: string | null;
   fighterId: string;
   ready: boolean;
   latestInput: InputState;
@@ -38,6 +44,9 @@ function createEmptyConnection(): ConnectionState {
   return {
     socket: null,
     playerName: "",
+    alias: "",
+    accountId: null,
+    discordUserId: null,
     fighterId: "morana",
     ready: false,
     latestInput: { left: false, right: false, up: false, guard: false, punch: false, kick: false, special: false, overcharge: false },
@@ -81,6 +90,14 @@ function toRoomStateMessage(room: RoomState) {
     selections: {
       host: room.host.fighterId,
       guest: room.guest.fighterId,
+    },
+    identities: {
+      host: room.host.accountId
+        ? { accountId: room.host.accountId, alias: room.host.alias || room.host.playerName || "Host" }
+        : null,
+      guest: room.guest.accountId
+        ? { accountId: room.guest.accountId, alias: room.guest.alias || room.guest.playerName || "Guest" }
+        : null,
     },
   };
 }
@@ -160,7 +177,10 @@ wss.on("connection", (socket: WebSocket, request: UpgradeRequest) => {
   const slot = payload.role === "host" ? 1 : 2;
   const connection = slot === 1 ? room.host : room.guest;
   connection.socket = socket;
-  connection.playerName = payload.playerName;
+  connection.playerName = payload.playerName.slice(0, 20);
+  connection.alias = (payload.alias || payload.playerName).slice(0, 20);
+  connection.accountId = payload.accountId;
+  connection.discordUserId = payload.discordUserId;
   connection.fighterId = fighterRoster[payload.fighterId] ? payload.fighterId : connection.fighterId;
   connection.ready = false;
 
@@ -172,7 +192,10 @@ wss.on("connection", (socket: WebSocket, request: UpgradeRequest) => {
 
     if (message.type === "select_fighter" && typeof message.fighterId === "string" && fighterRoster[message.fighterId]) {
       connection.fighterId = message.fighterId;
-      connection.playerName = typeof message.playerName === "string" ? message.playerName.slice(0, 20) : connection.playerName;
+      if (typeof message.playerName === "string") {
+        connection.alias = message.playerName.slice(0, 20) || connection.alias;
+        connection.playerName = connection.alias;
+      }
       broadcast(room, toRoomStateMessage(room));
     }
 

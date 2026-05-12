@@ -7,6 +7,9 @@ export interface SessionTokenPayload extends JWTPayload {
   role: "host" | "guest";
   playerName: string;
   fighterId: string;
+  accountId: string;
+  discordUserId: string;
+  alias: string;
 }
 
 export function createRoomCode() {

@@ -278,7 +278,7 @@ function getMenuEntries(showLab: boolean): MenuEntry[] {
   return [
     { href: "/fight?mode=arcade", label: "Arcade" },
     { href: "/fight?mode=training", label: "Training" },
-    { href: "/online", label: "Find Match", disabled: true },
+    { href: "/online", label: "Find Match" },
     ...(showLab ? [{ href: "/animation-lab", label: "Lab" }] : []),
     { href: "/credits", label: "Credits" },
   ];

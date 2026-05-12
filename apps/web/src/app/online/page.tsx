@@ -1,8 +1,11 @@
 import Link from "next/link";
 
 import { OnlineRoomPanel } from "@/components/online-room-panel";
+import { requireAuth } from "@/lib/auth";
 
-export default function OnlinePage() {
+export default async function OnlinePage() {
+  const session = await requireAuth("/online");
+
   return (
     <main className="shell shell-narrow">
       <Link className="back-link" href="/">
@@ -16,7 +19,7 @@ export default function OnlinePage() {
           Set <code>NEXT_PUBLIC_MATCH_SERVICE_URL</code> to your Render endpoint before deploying.
         </p>
       </section>
-      <OnlineRoomPanel />
+      <OnlineRoomPanel initialPlayerName={session.displayName} />
     </main>
   );
 }

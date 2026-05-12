@@ -6,6 +6,7 @@ import { FightCharacterSelect } from "@/components/fight-character-select";
 import { FightScene } from "@/components/fight-scene";
 import { defaultArenaId, isArenaId, pickRandomArenaId } from "@/lib/arenas";
 import { arcadeFinalBossId, parseArcadeOrder } from "@/lib/arcade";
+import { requireAuth } from "@/lib/auth";
 import { isMasterModeEnabled } from "@/lib/feature-flags";
 import {
   isRandomFighterSelection,
@@ -123,7 +124,13 @@ export default async function FightPage({ searchParams }: FightPageProps) {
     : explicitArenaId ?? defaultArenaId;
   const roomCode = typeof params.roomCode === "string" ? params.roomCode : undefined;
   const token = typeof params.token === "string" ? params.token : undefined;
-  const playerName = typeof params.name === "string" ? params.name : undefined;
+  let playerName = typeof params.name === "string" ? params.name : undefined;
+  if (mode === "online") {
+    const session = await requireAuth("/fight?mode=online");
+    if (!playerName) {
+      playerName = session.displayName;
+    }
+  }
   const arcadeResult = mode === "arcade" && params.arcadeResult === "clear"
     ? "clear"
     : null;
