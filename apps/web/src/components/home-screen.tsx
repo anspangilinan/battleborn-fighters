@@ -303,6 +303,16 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
     [menuPair],
   );
 
+  const navigateWithFallback = (href: string) => {
+    const sourceHref = window.location.href;
+    router.push(href);
+    window.setTimeout(() => {
+      if (window.location.href === sourceHref) {
+        window.location.assign(href);
+      }
+    }, 700);
+  };
+
   useEffect(() => {
     if (stage !== "title") {
       return;
@@ -379,7 +389,7 @@ export function HomeScreen({ showLab = false }: HomeScreenProps) {
         }
 
         event.preventDefault();
-        router.push(entry.href);
+        navigateWithFallback(entry.href);
         return;
       }
 

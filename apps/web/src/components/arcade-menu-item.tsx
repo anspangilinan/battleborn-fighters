@@ -34,8 +34,30 @@ export function ArcadeMenuItem({
     .join(" ");
 
   if (href && !disabled) {
+    const onLinkClick: MouseEventHandler<HTMLAnchorElement> = (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      // In production we've seen occasional stalled client transitions.
+      // Fall back to a hard navigation when the URL does not change.
+      const sourceHref = window.location.href;
+      window.setTimeout(() => {
+        if (window.location.href === sourceHref) {
+          window.location.assign(href);
+        }
+      }, 700);
+    };
+
     return (
-      <Link href={href} className={classes} style={style}>
+      <Link href={href} className={classes} style={style} prefetch={false} onClick={onLinkClick}>
         {children}
       </Link>
     );
